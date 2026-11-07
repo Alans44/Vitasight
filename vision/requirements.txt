@@ -1,0 +1,3 @@
+ultralytics==8.4.204
+lap==0.5.12
+scipy==1.16.3
