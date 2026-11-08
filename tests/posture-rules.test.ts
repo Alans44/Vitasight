@@ -4,6 +4,7 @@ import type { Detection } from "../shared/contracts.ts";
 import {
   createPostureMemory,
   isSeated,
+  POSTURE_CONSTANTS,
   updatePosture,
 } from "../server/posture-rules.ts";
 
@@ -18,17 +19,18 @@ function blank(x = 0.2): Detection {
 
 function seatedPose(x = 0.2): Detection {
   const d = blank(x);
-  d.points[0] = { x: x + 0.05, y: 0.22, confidence: 0.95 };
+  // Torso ~0.33× box height so upright seated stays above TORSO_COLLAPSE.
+  d.points[0] = { x: x + 0.05, y: 0.18, confidence: 0.95 };
   for (const i of [3, 4])
-    d.points[i] = { x: x + 0.05, y: 0.24, confidence: 0.95 };
+    d.points[i] = { x: x + 0.05, y: 0.2, confidence: 0.95 };
   for (const i of [5, 6])
-    d.points[i] = { x: x + 0.05, y: 0.32, confidence: 0.95 };
+    d.points[i] = { x: x + 0.05, y: 0.25, confidence: 0.95 };
   for (const i of [9, 10])
-    d.points[i] = { x: x + 0.08, y: 0.45, confidence: 0.95 };
+    d.points[i] = { x: x + 0.08, y: 0.4, confidence: 0.95 };
   for (const i of [11, 12])
-    d.points[i] = { x: x + 0.05, y: 0.55, confidence: 0.95 };
+    d.points[i] = { x: x + 0.05, y: 0.58, confidence: 0.95 };
   for (const i of [13, 14])
-    d.points[i] = { x: x + 0.08, y: 0.6, confidence: 0.95 };
+    d.points[i] = { x: x + 0.08, y: 0.62, confidence: 0.95 };
   for (const i of [15, 16])
     d.points[i] = { x: x + 0.05, y: 0.72, confidence: 0.95 };
   return d;
@@ -36,9 +38,22 @@ function seatedPose(x = 0.2): Detection {
 
 function potentialSlumpPose(x = 0.2): Detection {
   const d = seatedPose(x);
-  d.points[0] = { x: x + 0.05, y: 0.34, confidence: 0.95 };
+  d.points[0] = { x: x + 0.05, y: 0.28, confidence: 0.95 };
   for (const i of [3, 4])
-    d.points[i] = { x: x + 0.05, y: 0.35, confidence: 0.95 };
+    d.points[i] = { x: x + 0.05, y: 0.29, confidence: 0.95 };
+  return d;
+}
+
+/** Shoulders near hips; head stays with shoulders so head-drop alone does not fire. */
+function collapsedTorsoPose(x = 0.2): Detection {
+  const d = seatedPose(x);
+  for (const i of [5, 6])
+    d.points[i] = { x: x + 0.05, y: 0.52, confidence: 0.95 };
+  d.points[0] = { x: x + 0.05, y: 0.5, confidence: 0.95 };
+  for (const i of [3, 4])
+    d.points[i] = { x: x + 0.05, y: 0.51, confidence: 0.95 };
+  for (const i of [9, 10])
+    d.points[i] = { x: x + 0.08, y: 0.55, confidence: 0.95 };
   return d;
 }
 
@@ -148,6 +163,49 @@ test("potential slump escalates to SLUMP after 3s hold", () => {
   let sawFull = false;
   for (let at = 14_000; at <= 16_000; at += 100) {
     const r = updatePosture(memory, potentialSlumpPose(), false, at);
+    if (r.liveSlump) sawFull = true;
+  }
+  assert.equal(sawFull, true);
+  assert.equal(memory.slumpLatched, true);
+});
+
+test("upright seated does not trigger torso-collapse potential", () => {
+  const memory = createPostureMemory();
+  for (let at = 10_000; at < 14_000; at += 100) {
+    const r = updatePosture(memory, seatedPose(), false, at);
+    assert.equal(r.potentialSlump, false);
+    assert.equal(r.liveSlump, false);
+    assert.ok(
+      (r.headTorso ?? 0) < POSTURE_CONSTANTS.POTENTIAL_HEAD_TORSO ||
+        r.headTorso === null ||
+        r.headTorso < 0,
+    );
+  }
+  const scale = 0.9;
+  const upright = seatedPose();
+  const gap =
+    Math.hypot(
+      upright.points[5].x - upright.points[11].x,
+      upright.points[5].y - upright.points[11].y,
+    ) / scale;
+  assert.ok(gap > POSTURE_CONSTANTS.TORSO_COLLAPSE);
+});
+
+test("torso collapse while seated escalates to SLUMP after 3s", () => {
+  const memory = createPostureMemory();
+  for (let at = 10_000; at < 12_000; at += 100)
+    updatePosture(memory, seatedPose(), false, at);
+  let sawPotential = false;
+  for (let at = 12_000; at < 14_000; at += 100) {
+    const r = updatePosture(memory, collapsedTorsoPose(), false, at);
+    if (r.potentialSlump) sawPotential = true;
+    assert.equal(r.liveSlump, false);
+    assert.equal(r.slumpDetected, false);
+  }
+  assert.equal(sawPotential, true);
+  let sawFull = false;
+  for (let at = 14_000; at <= 16_000; at += 100) {
+    const r = updatePosture(memory, collapsedTorsoPose(), false, at);
     if (r.liveSlump) sawFull = true;
   }
   assert.equal(sawFull, true);

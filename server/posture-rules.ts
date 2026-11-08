@@ -5,6 +5,8 @@ type Sample = {
   at: number;
   seated: boolean;
   headTorso: number;
+  /** Mid-shoulder to mid-hip Euclidean gap / box height. */
+  shoulderHipGap: number;
   headAnkle: number | null;
   shoulderAnkle: number | null;
   boxH: number;
@@ -45,6 +47,11 @@ const VIS = 0.6;
 const POTENTIAL_HEAD_TORSO = 0.02;
 /** Head into lower half of torso (toward hips) → deeper full-zone. */
 const FULL_HEAD_TORSO = 0.45;
+/**
+ * Mid-shoulder within this fraction of box height of mid-hip → torso collapsed
+ * (upper torso in the general area of lower torso).
+ */
+const TORSO_COLLAPSE = 0.28;
 /** Potential → full SLUMP after this hold. */
 const POTENTIAL_TO_SLUMP_MS = 3000;
 /** Rapid head/shoulder→ankle or box collapse window and thresholds. */
@@ -133,6 +140,7 @@ export function updatePosture(
 
   let seated = false;
   let headTorso = 0;
+  let shoulderHipGap = 1;
   let headAnkle: number | null = null;
   let shoulderAnkle: number | null = null;
   let head = shoulders;
@@ -146,6 +154,8 @@ export function updatePosture(
     const torsoLen = Math.max(0.001, hips.y - shoulders.y);
     seated = isSeated(hips, knees, ankles, torsoLen, scale);
     headTorso = (head.y - shoulders.y) / torsoLen;
+    shoulderHipGap =
+      Math.hypot(shoulders.x - hips.x, shoulders.y - hips.y) / scale;
     headAnkle =
       ankles && visible(ankles)
         ? Math.max(0, ankles.y - head.y) / scale
@@ -165,6 +175,9 @@ export function updatePosture(
       at: now,
       seated: sampleOk ? seated : (last?.seated ?? seated),
       headTorso: sampleOk ? headTorso : (last?.headTorso ?? headTorso),
+      shoulderHipGap: sampleOk
+        ? shoulderHipGap
+        : (last?.shoulderHipGap ?? shoulderHipGap),
       headAnkle: sampleOk ? headAnkle : (last?.headAnkle ?? headAnkle),
       shoulderAnkle: sampleOk
         ? shoulderAnkle
@@ -184,6 +197,10 @@ export function updatePosture(
     currentWindow.length > 0
       ? mean(currentWindow.map((h) => h.headTorso))
       : headTorso;
+  const curGap =
+    currentWindow.length > 0
+      ? mean(currentWindow.map((h) => h.shoulderHipGap))
+      : shoulderHipGap;
   const seatedRecent =
     currentWindow.length > 0
       ? currentWindow.filter((h) => h.seated).length >=
@@ -191,11 +208,15 @@ export function updatePosture(
       : seated;
 
   const potentialSlump =
-    postureUsable && seatedRecent && curHeadTorso >= POTENTIAL_HEAD_TORSO;
+    postureUsable &&
+    seatedRecent &&
+    (curHeadTorso >= POTENTIAL_HEAD_TORSO || curGap <= TORSO_COLLAPSE);
   // Instant upright (even for one frame) breaks the 3s hold so a later
   // slump can open a new review episode after recovery.
   const frameUpright =
-    !postureUsable || !seated || headTorso < POTENTIAL_HEAD_TORSO;
+    !postureUsable ||
+    !seated ||
+    (headTorso < POTENTIAL_HEAD_TORSO && shoulderHipGap > TORSO_COLLAPSE);
   if (potentialSlump && !frameUpright) {
     memory.potentialSince = memory.potentialSince || now;
   } else {
@@ -295,6 +316,7 @@ export function updatePosture(
 export const POSTURE_CONSTANTS = {
   POTENTIAL_HEAD_TORSO,
   FULL_HEAD_TORSO,
+  TORSO_COLLAPSE,
   POTENTIAL_TO_SLUMP_MS,
   FALL_WINDOW_MS,
   FALL_COLLAPSE,
