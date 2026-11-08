@@ -14,3 +14,5 @@ npm start
 ```
 
 Open **http://127.0.0.1:8790**.
+
+Configure SMS in **Configuration > Text alerts**. See [text alert setup](docs/text-alerts.md).

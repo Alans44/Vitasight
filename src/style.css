@@ -513,9 +513,8 @@ main {
   color: #fcd34d;
 }
 .log-note {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .dashboard-video-library {
   min-width: 0;
@@ -1212,6 +1211,117 @@ td small {
 }
 .settings-card {
   padding: 24px;
+}
+.notification-settings {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.notification-settings h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notification-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+}
+.notification-columns > * {
+  min-width: 0;
+}
+.notification-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+  margin: 16px 0;
+}
+.notification-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: #10b981;
+}
+.sms-connection {
+  margin-top: 22px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.sms-connection summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+.sms-connection a {
+  color: #a7f3d0;
+}
+.notification-actions {
+  margin-top: 22px;
+}
+.notification-actions button {
+  font-size: 12px;
+}
+.notification-notice,
+.notification-error {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.notification-notice,
+.sms-ready {
+  color: #6ee7b7;
+}
+.notification-error {
+  color: #fca5a5;
+}
+.notification-history h3 {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.notification-history ol {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 18px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+.notification-history li {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.notification-history time {
+  font-size: 10px;
+  color: #64748b;
+}
+.sms-body {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.6;
+  margin-top: 10px;
+}
+.sms-status {
+  font-size: 11px;
+  color: #fcd34d;
+}
+.sms-delivered,
+.sms-sent {
+  color: #6ee7b7;
+}
+.sms-failed,
+.sms-unknown {
+  color: #fca5a5;
+}
+.sms-canceled {
+  color: #94a3b8;
+}
+.event-notification {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 .settings-card > p {
   margin: 10px 0 25px;
@@ -2103,6 +2213,10 @@ code {
   }
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+  .notification-columns {
+    grid-template-columns: 1fr;
+    gap: 28px;
   }
   .video-library {
     grid-template-columns: 290px minmax(0, 1fr);

@@ -9,10 +9,12 @@ import {
   patientInput,
   poseResponse,
   settingsSchema,
+  smsConfigurationSchema,
   type Detection,
 } from "../shared/contracts.ts";
 import { Monitor } from "./monitor.ts";
 import { Store } from "./store.ts";
+import { SmsService, type SmsOptions } from "./sms.ts";
 
 export function demoDetections(scene: string): Detection[] {
   return [0, 1].map((n) => {
@@ -46,11 +48,12 @@ export function demoDetections(scene: string): Detection[] {
     return { id: String(n + 1), box: [x + shift, 0.12, 0.27, 0.78], points };
   });
 }
-type Options = { poseUrl?: string; fetcher?: typeof fetch };
+type Options = { poseUrl?: string; fetcher?: typeof fetch; sms?: SmsOptions };
 export function createApp(store: Store, options: Options = {}) {
   const app = express(),
     monitor = new Monitor(store),
     busy = new Set<string>();
+  const sms = new SmsService(store, options.sms);
   const poseUrl =
     options.poseUrl ||
     `http://127.0.0.1:${Number(process.env.POSE_PORT || 8791)}`;
@@ -87,6 +90,7 @@ export function createApp(store: Store, options: Options = {}) {
       events: store.events(),
       audit: store.audit(),
       settings: store.settings(),
+      sms: sms.snapshot(),
       now: Date.now(),
     });
   });
@@ -243,6 +247,12 @@ export function createApp(store: Store, options: Options = {}) {
       for (const track of feed.tracks) track.since = null;
     res.json({ ok: true });
   });
+  app.put("/api/notifications", (req, res) => {
+    res.json(sms.configure(smsConfigurationSchema.parse(req.body)));
+  });
+  app.post("/api/notifications/test", (_req, res) => {
+    res.status(202).json(sms.test());
+  });
   app.get("/api/export", (_req, res) =>
     res.attachment("vitasight-events.json").json({
       version: 1,
@@ -252,6 +262,7 @@ export function createApp(store: Store, options: Options = {}) {
       patients: store.patients(),
       events: store.events(),
       audit: store.audit(1_000_000),
+      notifications: store.smsNotifications(1_000_000),
     }),
   );
   app.use("/api", (_req, res) =>
@@ -275,5 +286,5 @@ export function createApp(store: Store, options: Options = {}) {
       });
     },
   );
-  return { app, monitor };
+  return { app, monitor, sms };
 }

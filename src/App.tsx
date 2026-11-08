@@ -8,6 +8,7 @@ import {
   FlaskConical,
   LayoutDashboard,
   ListChecks,
+  MessageSquare,
   Plus,
   Settings2,
   Volume2,
@@ -21,6 +22,8 @@ import EventDetail from "./EventDetail";
 import PatientSidebar from "./PatientSidebar";
 import VideoPlaceholder from "./VideoPlaceholder";
 import VideoLibrary from "./VideoLibrary";
+import NotificationSettings from "./NotificationSettings";
+import { smsStatusLabel } from "../shared/notifications";
 
 export default function App() {
   const [state, setState] = useState<Snapshot | null>(null),
@@ -449,6 +452,13 @@ export default function App() {
                   <h2>Event log</h2>
                   <button
                     className="text-button"
+                    onClick={() => setTab("settings")}
+                  >
+                    <MessageSquare size={13} />
+                    Text alerts {state?.sms?.preferences.enabled ? "on" : "off"}
+                  </button>
+                  <button
+                    className="text-button"
                     onClick={() => setTab("events")}
                   >
                     View all
@@ -471,7 +481,9 @@ export default function App() {
                         <span className={entry.eventId ? "log-attention" : ""}>
                           {entry.action}
                         </span>
-                        <span className="log-note">{entry.note}</span>
+                        <span className="log-note" title={entry.note}>
+                          {entry.note}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -605,6 +617,19 @@ export default function App() {
                             <span className={"status " + e.status}>
                               {e.status}
                             </span>
+                            {state?.sms?.notifications.find(
+                              (message) => message.eventId === e.id,
+                            ) && (
+                              <small>
+                                {
+                                  smsStatusLabel[
+                                    state.sms.notifications.find(
+                                      (message) => message.eventId === e.id,
+                                    )!.status
+                                  ]
+                                }
+                              </small>
+                            )}
                           </td>
                           <td>
                             <button
@@ -723,6 +748,13 @@ export default function App() {
                   Save rules
                 </button>
               </form>
+              {state?.sms && (
+                <NotificationSettings
+                  snapshot={state.sms}
+                  actor={actor}
+                  refresh={refresh}
+                />
+              )}
             </div>
           )}
         </div>
@@ -744,6 +776,7 @@ export default function App() {
           key={detail.id}
           event={detail}
           audit={state.audit}
+          notifications={state.sms?.notifications || []}
           actor={actor.trim() || "Local user"}
           onClose={() => setSelected(null)}
           refresh={refresh}

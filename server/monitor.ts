@@ -160,7 +160,7 @@ export class Monitor {
           feed,
           t,
           "posture",
-          `Sustained seated posture change for ${settings.sustainSeconds}s. Check the person in view.`,
+          `Head remained lowered while seated for ${settings.sustainSeconds} seconds. Check the person in view.`,
           now,
           {
             score: measure.score,

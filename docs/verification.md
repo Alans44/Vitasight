@@ -2,6 +2,10 @@
 
 The original baseline below was verified with Node 24.18.0, npm 11.16.0, Python 3.12, and Chromium through Playwright in WSL.
 
+## Waiting-room texts
+
+Twenty-nine automated tests pass, including event-to-SMS deduplication, provider acceptance versus delivery, disabled alerts, simulated-event opt-in, no history replay, persistent queues, interrupted sends, expired alerts, recipient changes, test cooldown, credential redaction, and the local configuration/export API. SMS delivery is exercised with controlled Twilio API responses. Live Twilio authentication was checked separately; actual phone delivery still requires an SMS-capable sender and a receiving number. The existing pose and pulse rules are unchanged.
+
 ## Frontend updates
 
 Vitasight uses the VITAL-style dark dashboard, horizontal Dashboard/Library/Direct Feed navigation, patient sidebar, and video placeholders. Twenty-three automated tests, TypeScript, the production build, and formatting checks pass. The browser walkthrough verifies the full review workflow and mobile layout. The pulse walkthrough also verifies independent BPM/body toggles, persistent preferences, continued processing while overlays or source views are hidden, navigation to the placeholder Library, and adding a demo from Direct Feed. No JavaScript page errors, horizontal mobile overflow, or unexpected external runtime requests were observed. The real local face and body services were exercised with the controlled portrait fixture. Source comment scans passed; runtime data, models, and local test artifacts remain ignored by Git.
@@ -42,4 +46,4 @@ The actual vision installation used a temporary environment. The Desktop reposit
 
 ## Not established
 
-No real camera permission flow, consenting live-participant study, clinical heart-rate accuracy benchmark, medical sensitivity/specificity, cross-camera identity recognition, hospital deployment, or external message delivery was validated. The pose and modulated portrait fixtures are engineering tests. Multi-feed throughput, live pulse accuracy, and seated-posture reliability need testing on the intended machine and footage. The software has no breathing model or external messaging integration.
+No real camera permission flow, consenting live-participant study, clinical heart-rate accuracy benchmark, medical sensitivity/specificity, cross-camera identity recognition, hospital deployment, or external message delivery was validated. The pose and modulated portrait fixtures are engineering tests. Multi-feed throughput, live pulse accuracy, and seated-posture reliability need testing on the intended machine and footage. The software has no breathing model. Optional text notifications do not establish clinical accuracy or staff response.

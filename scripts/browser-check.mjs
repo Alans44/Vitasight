@@ -52,6 +52,44 @@ try {
     path: "test-results/desktop-empty.png",
     fullPage: true,
   });
+  await page
+    .getByRole("button", { name: "Configuration", exact: true })
+    .click();
+  const textAlerts = page.getByRole("region", {
+    name: "Text alerts",
+    exact: true,
+  });
+  await textAlerts.getByLabel("Recipient phone number").fill("+15005550009");
+  await textAlerts.getByRole("button", { name: "Save text settings" }).click();
+  await textAlerts
+    .getByRole("status")
+    .filter({ hasText: "Settings saved" })
+    .waitFor();
+  await textAlerts
+    .getByLabel("Send automatic text alerts", { exact: true })
+    .check();
+  await textAlerts.getByRole("button", { name: "Save text settings" }).click();
+  await textAlerts
+    .getByRole("alert")
+    .filter({ hasText: "Add the recipient" })
+    .waitFor();
+  await textAlerts
+    .getByLabel("Send automatic text alerts", { exact: true })
+    .uncheck();
+  await textAlerts.getByRole("button", { name: "Save text settings" }).click();
+  await textAlerts
+    .getByRole("status")
+    .filter({ hasText: "Settings saved" })
+    .waitFor();
+  await page.screenshot({
+    path: "test-results/text-alerts-desktop.png",
+    fullPage: true,
+  });
+  const smsSetup = await (await fetch(url + "/api/state")).json();
+  assert.equal(smsSetup.sms.preferences.recipient, "+15005550009");
+  assert.equal(smsSetup.sms.preferences.enabled, false);
+  assert.equal(smsSetup.sms.notifications.length, 0);
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
   await page.getByRole("button", { name: "Start demo", exact: true }).click();
   const source = page.locator(".source-card").first();
   await source
@@ -103,13 +141,32 @@ try {
     "Mobile horizontal overflow",
   );
   assert.deepEqual(errors, []);
+  await page
+    .getByRole("button", { name: "Configuration", exact: true })
+    .click();
+  await page.getByLabel("Recipient phone number").waitFor();
+  assert.equal(
+    await page.getByLabel("Recipient phone number").inputValue(),
+    "+15005550009",
+  );
+  await page.screenshot({
+    path: "test-results/text-alerts-mobile.png",
+    fullPage: true,
+  });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+    false,
+    "Text settings mobile horizontal overflow",
+  );
   assert.deepEqual(
     external,
     [],
     "App must not request remote services or fonts",
   );
   console.log(
-    "Browser passed: demo → association → sustained event → acknowledgment → assignment → reassessment → search/export/reload; mobile layout; no page errors or external requests.",
+    "Browser passed: text-alert settings and validation; demo → association → sustained event → acknowledgment → assignment → reassessment → search/export/reload; mobile layouts; no page errors or external requests.",
   );
 } finally {
   await browser?.close();

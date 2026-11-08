@@ -101,11 +101,63 @@ export const actionSchema = z.object({
   actor: z.string().trim().min(1).max(60),
   note: z.string().trim().max(500).default(""),
 });
+export const phoneSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^\+[1-9]\d{7,14}$/,
+    "Use a phone number with country code, such as +15551234567",
+  );
+export const smsPreferencesSchema = z.object({
+  enabled: z.boolean(),
+  recipient: phoneSchema.or(z.literal("")),
+  includeDemo: z.boolean(),
+});
+export const smsConfigurationSchema = smsPreferencesSchema.extend({
+  actor: z.string().trim().min(1).max(60),
+  accountSid: z
+    .string()
+    .trim()
+    .regex(/^AC[0-9a-fA-F]{32}$/, "Enter a valid Twilio Account SID")
+    .optional(),
+  authToken: z.string().trim().min(32).max(128).optional(),
+  fromNumber: phoneSchema.optional(),
+});
+export type SmsPreferences = z.infer<typeof smsPreferencesSchema>;
+export type SmsNotification = {
+  id: string;
+  eventId: string | null;
+  mode: Mode | "test";
+  recipient: string;
+  body: string;
+  status:
+    | "pending"
+    | "sending"
+    | "queued"
+    | "sent"
+    | "delivered"
+    | "failed"
+    | "unknown"
+    | "canceled";
+  providerId: string | null;
+  error: string;
+  createdAt: number;
+  updatedAt: number;
+  nextCheckAt: number | null;
+};
+export type SmsSnapshot = {
+  preferences: SmsPreferences;
+  configured: boolean;
+  credentialsSaved: boolean;
+  fromNumber: string;
+  notifications: SmsNotification[];
+};
 export type Snapshot = {
   feeds: Feed[];
   patients: Patient[];
   events: ReviewEvent[];
   audit: Audit[];
   settings: Settings;
+  sms: SmsSnapshot;
   now: number;
 };

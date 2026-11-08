@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { X, Check, UserCheck, ClipboardCheck } from "lucide-react";
-import type { Audit, ReviewEvent } from "../shared/contracts";
+import type { Audit, ReviewEvent, SmsNotification } from "../shared/contracts";
+import { smsStatusLabel } from "../shared/notifications";
 import { api } from "./api";
 export default function EventDetail({
   event,
   audit,
+  notifications,
   actor,
   onClose,
   refresh,
@@ -12,6 +14,7 @@ export default function EventDetail({
 }: {
   event: ReviewEvent;
   audit: Audit[];
+  notifications: SmsNotification[];
   actor: string;
   onClose: () => void;
   refresh: () => Promise<void>;
@@ -61,6 +64,18 @@ export default function EventDetail({
           <span className={"status " + event.status}>{event.status}</span>
         </div>
         <p className="detail-reason">{event.reason}</p>
+        {notifications
+          .filter((message) => message.eventId === event.id)
+          .map((message) => (
+            <div key={message.id} className="event-notification">
+              <span className={"sms-status sms-" + message.status}>
+                {smsStatusLabel[message.status]}
+              </span>
+              {message.error && (
+                <p className="notification-error">{message.error}</p>
+              )}
+            </div>
+          ))}
         <dl className="details">
           <div>
             <dt>Source</dt>

@@ -7,8 +7,11 @@ import type {
   Patient,
   ReviewEvent,
   Settings,
+  SmsNotification,
+  SmsPreferences,
   actionSchema,
 } from "../shared/contracts.ts";
+import { eventText, smsStatusLabel } from "../shared/notifications.ts";
 import type { z } from "zod";
 
 export class Store {
@@ -21,7 +24,10 @@ export class Store {
       CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, feed TEXT NOT NULL, track TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, payload TEXT NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS active_event ON events(feed,track,kind) WHERE status IN ('open','acknowledged');
       CREATE TABLE IF NOT EXISTS audit(id TEXT PRIMARY KEY, at INTEGER NOT NULL, payload TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS settings(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS sms_settings(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS sms_outbox(id TEXT PRIMARY KEY, event TEXT UNIQUE, status TEXT NOT NULL, created INTEGER NOT NULL, payload TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS sms_status ON sms_outbox(status,created);`);
     this.db.prepare("INSERT OR IGNORE INTO settings VALUES(1,?)").run(
       JSON.stringify({
         sustainSeconds: 3,
@@ -29,6 +35,11 @@ export class Store {
         overdueMinutes: 30,
       }),
     );
+    this.db
+      .prepare("INSERT OR IGNORE INTO sms_settings VALUES(1,?)")
+      .run(
+        JSON.stringify({ enabled: false, recipient: "", includeDemo: false }),
+      );
   }
   transaction<T>(fn: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
@@ -107,16 +118,159 @@ export class Store {
           event.createdAt,
           JSON.stringify(event),
         );
-      if (result.changes)
+      if (result.changes) {
         this.log(
           "Review requested",
-          event.reason,
+          `${event.source} · ${event.person}: ${event.reason}`,
           "System",
           event.id,
           event.createdAt,
         );
+        const sms = this.smsPreferences();
+        if (
+          sms.enabled &&
+          sms.recipient &&
+          (event.mode === "live" || sms.includeDemo)
+        )
+          this.queueSms(
+            event.id,
+            event.mode,
+            sms.recipient,
+            eventText(event),
+            event.createdAt,
+          );
+      }
       return !!result.changes;
     });
+  }
+  smsPreferences(): SmsPreferences {
+    return JSON.parse(
+      String(
+        this.db.prepare("SELECT payload FROM sms_settings WHERE id=1").get()!
+          .payload,
+      ),
+    );
+  }
+  configureSms(preferences: SmsPreferences, actor: string) {
+    this.transaction(() => {
+      this.db
+        .prepare("UPDATE sms_settings SET payload=? WHERE id=1")
+        .run(JSON.stringify(preferences));
+      for (const message of this.smsWithStatus("pending")) {
+        if (
+          message.status === "pending" &&
+          message.mode !== "test" &&
+          (!preferences.enabled ||
+            message.recipient !== preferences.recipient ||
+            (message.mode === "demo" && !preferences.includeDemo))
+        )
+          this.updateSms({
+            ...message,
+            status: "canceled",
+            error: "Alert settings changed before sending.",
+            updatedAt: Date.now(),
+          });
+      }
+      this.log(
+        "Text alerts updated",
+        `${preferences.enabled ? "Enabled" : "Paused"}; simulated events ${preferences.includeDemo ? "included" : "excluded"}.`,
+        actor,
+      );
+    });
+  }
+  smsNotifications(limit = 30): SmsNotification[] {
+    return this.db
+      .prepare(
+        "SELECT payload FROM sms_outbox ORDER BY created DESC, rowid DESC LIMIT ?",
+      )
+      .all(limit)
+      .map((row) => JSON.parse(String(row.payload)));
+  }
+  smsWithStatus(status: SmsNotification["status"]): SmsNotification[] {
+    return this.db
+      .prepare("SELECT payload FROM sms_outbox WHERE status=?")
+      .all(status)
+      .map((row) => JSON.parse(String(row.payload)));
+  }
+  dueSms(now: number): SmsNotification[] {
+    return this.db
+      .prepare(
+        "SELECT payload FROM sms_outbox WHERE status IN ('queued','sent','unknown') AND json_extract(payload,'$.providerId') IS NOT NULL AND json_extract(payload,'$.nextCheckAt') <= ? ORDER BY created LIMIT 4",
+      )
+      .all(now)
+      .map((row) => JSON.parse(String(row.payload)));
+  }
+  queueSms(
+    eventId: string | null,
+    mode: SmsNotification["mode"],
+    recipient: string,
+    body: string,
+    now = Date.now(),
+  ) {
+    const message: SmsNotification = {
+      id: randomUUID(),
+      eventId,
+      mode,
+      recipient,
+      body,
+      status: "pending",
+      providerId: null,
+      error: "",
+      createdAt: now,
+      updatedAt: now,
+      nextCheckAt: null,
+    };
+    this.db
+      .prepare("INSERT INTO sms_outbox VALUES(?,?,?,?,?)")
+      .run(message.id, eventId, message.status, now, JSON.stringify(message));
+    this.log(
+      "SMS pending",
+      mode === "test"
+        ? "Test text queued locally."
+        : "Event text queued locally.",
+      "System",
+      eventId,
+      now,
+    );
+    return message;
+  }
+  claimSms(now = Date.now()): SmsNotification | null {
+    return this.transaction(() => {
+      const row = this.db
+        .prepare(
+          "SELECT payload FROM sms_outbox WHERE status='pending' ORDER BY created, rowid LIMIT 1",
+        )
+        .get();
+      if (!row) return null;
+      const message: SmsNotification = {
+        ...JSON.parse(String(row.payload)),
+        status: "sending",
+        updatedAt: now,
+      };
+      this.db
+        .prepare("UPDATE sms_outbox SET status=?,payload=? WHERE id=?")
+        .run(message.status, JSON.stringify(message), message.id);
+      return message;
+    });
+  }
+  updateSms(message: SmsNotification) {
+    const previous = this.db
+      .prepare("SELECT status FROM sms_outbox WHERE id=?")
+      .get(message.id);
+    this.db
+      .prepare("UPDATE sms_outbox SET status=?,payload=? WHERE id=?")
+      .run(message.status, JSON.stringify(message), message.id);
+    if (previous && previous.status !== message.status)
+      this.log(
+        smsStatusLabel[message.status],
+        message.error ||
+          (message.status === "delivered"
+            ? "Carrier confirmed delivery."
+            : "Text notification status updated."),
+        "System",
+        message.eventId,
+        message.updatedAt,
+      );
   }
   action(id: string, input: z.infer<typeof actionSchema>, now = Date.now()) {
     return this.transaction(() => {
