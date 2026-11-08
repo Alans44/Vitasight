@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, Film, FlaskConical, Square, EyeOff } from "lucide-react";
 import type { Feed, Patient } from "../shared/contracts";
+import { trackStatusLabel } from "../shared/contracts";
 import { api } from "./api";
 import { usePulse } from "./usePulse";
 import TrackingOverlay from "./TrackingOverlay";
@@ -34,7 +35,7 @@ export default function SourceCard({
   feed,
   launch,
   patients,
-  threshold,
+  threshold: _threshold,
   refresh,
   onFeed,
   report,
@@ -297,11 +298,11 @@ export default function SourceCard({
                         ? "Identity uncertain"
                         : t.quality < 0.6
                           ? "Landmarks obscured"
-                          : t.score !== null && t.score >= threshold
-                            ? "Posture change observed"
+                          : t.fallDetected || t.slumpDetected || t.potentialSlump
+                            ? trackStatusLabel(t)
                             : t.patientId
-                              ? "Association confirmed"
-                              : "Confirm identity"}
+                              ? `${trackStatusLabel(t)} · Association confirmed`
+                              : `${trackStatusLabel(t)} · Confirm identity`}
                   </small>
                 </div>
                 <select

@@ -230,7 +230,9 @@ export default function PatientSidebar({
                     <span className="patient-tag">
                       {event.kind === "posture"
                         ? "Posture change"
-                        : "Reassessment due"}
+                        : event.kind === "fall"
+                          ? "Fall / faint"
+                          : "Reassessment due"}
                     </span>
                     <span className="patient-tag">
                       {patient

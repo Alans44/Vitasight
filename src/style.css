@@ -1570,6 +1570,29 @@ code {
   --track: #e8bc75;
   --mesh: #bba271;
 }
+.pose-overlay .track-visual.seated {
+  --track: #5bb8e8;
+  --mesh: #7ec8e8;
+}
+.pose-overlay .track-visual.potential-slump {
+  --track: #e9c465;
+  --mesh: #d4b56a;
+}
+.pose-overlay .track-visual.slump,
+.pose-overlay .track-visual.fall {
+  --track: #e87a5b;
+  --mesh: #d48a72;
+}
+.pose-overlay .track-visual.seated .track-name-bg {
+  stroke: #1f6f964d;
+}
+.pose-overlay .track-visual.potential-slump .track-name-bg {
+  stroke: #976d164d;
+}
+.pose-overlay .track-visual.slump .track-name-bg,
+.pose-overlay .track-visual.fall .track-name-bg {
+  stroke: #a63d244d;
+}
 .pose-overlay .track-box {
   fill: #6cd7cb03;
   stroke: var(--track);

@@ -326,3 +326,17 @@ test("reassessment resets the overdue reminder while retaining nurse priority", 
     f.store.close();
   }
 });
+test("demo posture scene marks seated and latches SLUMP on the same track after recovery", () => {
+  const f = fixture();
+  try {
+    assert.equal(f.feed.tracks[0].seated, true);
+    f.sustain();
+    assert.equal(f.feed.tracks[0].slumpDetected, true);
+    assert.equal(f.store.events()[0].kind, "posture");
+    f.step("resting");
+    assert.equal(f.feed.tracks[0].slumpDetected, true);
+    assert.equal(f.feed.tracks[0].potentialSlump, false);
+  } finally {
+    f.store.close();
+  }
+});

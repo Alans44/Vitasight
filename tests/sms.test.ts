@@ -101,7 +101,7 @@ test("a sustained waiting-room observation is logged once, texted once, then car
     assert.equal(store.smsNotifications().length, 1);
     assert.match(
       store.audit().find((a) => a.action === "Review requested")!.note,
-      /Waiting room 01.*Head remained lowered/,
+      /Waiting room 01.*(?:Head remained lowered|Potential slump held)/,
     );
     await Promise.all([sms.tick(), sms.tick()]);
     assert.equal(requests.length, 1);
@@ -109,7 +109,7 @@ test("a sustained waiting-room observation is logged once, texted once, then car
     assert.equal(sent.get("To"), preferences.recipient);
     assert.equal(sent.get("From"), credentials.fromNumber);
     assert.match(sent.get("Body")!, /Vitasight.*Waiting room 01/);
-    assert.match(sent.get("Body")!, /3 seconds/);
+    assert.match(sent.get("Body")!, /3s|3 seconds/);
     assert.equal(store.smsNotifications()[0].status, "queued");
     store.action(
       store.events()[0].id,

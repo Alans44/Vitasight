@@ -105,16 +105,23 @@ export default function EventDetail({
           </div>
           {event.evidence.score !== undefined && (
             <div>
-              <dt>Posture score / rule</dt>
+              <dt>
+                {event.kind === "fall" ? "Fall signal" : "Posture score / rule"}
+              </dt>
               <dd>
-                {event.evidence.score.toFixed(2)} /{" "}
-                {event.evidence.threshold?.toFixed(2)}
+                {event.evidence.score.toFixed(2)}
+                {event.evidence.threshold !== undefined
+                  ? ` / ${event.evidence.threshold.toFixed(2)}`
+                  : ""}
+                {event.evidence.seconds !== undefined
+                  ? ` · ${event.evidence.seconds}s`
+                  : ""}
               </dd>
             </div>
           )}
         </dl>
         <p className="muted small">
-          Posture score reflects geometry, not medical risk.
+          Posture and fall signals reflect geometry, not medical risk.
         </p>
         {!closed && (
           <>

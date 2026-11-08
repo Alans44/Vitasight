@@ -603,7 +603,9 @@ export default function App() {
                             <small>
                               {e.kind === "posture"
                                 ? "Sustained posture change"
-                                : "Reassessment interval elapsed"}
+                                : e.kind === "fall"
+                                  ? "Possible fall / faint"
+                                  : "Reassessment interval elapsed"}
                             </small>
                           </td>
                           <td>

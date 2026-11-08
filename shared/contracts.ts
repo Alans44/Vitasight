@@ -60,7 +60,46 @@ export type Track = {
   score: number | null;
   since: number | null;
   episode: boolean;
+  seated: boolean;
+  potentialSlump: boolean;
+  slumpDetected: boolean;
+  fallDetected: boolean;
 };
+export function trackStatusLabel(
+  track: Pick<
+    Track,
+    "seated" | "potentialSlump" | "slumpDetected" | "fallDetected"
+  >,
+) {
+  const seat = track.seated ? "SEATED" : "NOT SEATED";
+  const posture = track.fallDetected
+    ? "FALL"
+    : track.slumpDetected
+      ? "SLUMP"
+      : track.potentialSlump
+        ? "POTENTIAL SLUMP"
+        : "OK";
+  return `${seat} · ${posture}`;
+}
+export function trackStatusClass(
+  track: Pick<
+    Track,
+    | "ambiguous"
+    | "quality"
+    | "seated"
+    | "potentialSlump"
+    | "slumpDetected"
+    | "fallDetected"
+  >,
+) {
+  const parts = ["track-visual"];
+  if (track.ambiguous || track.quality < 0.6) parts.push("uncertain");
+  if (track.seated) parts.push("seated");
+  if (track.potentialSlump) parts.push("potential-slump");
+  if (track.slumpDetected) parts.push("slump");
+  if (track.fallDetected) parts.push("fall");
+  return parts.join(" ");
+}
 export type Feed = {
   id: string;
   session: string;
@@ -80,7 +119,7 @@ export type ReviewEvent = {
   person: string;
   patientId: string | null;
   mode: Mode;
-  kind: "posture" | "overdue";
+  kind: "posture" | "fall" | "overdue";
   status: "open" | "acknowledged" | "resolved" | "dismissed";
   assignedTo: string | null;
   reason: string;

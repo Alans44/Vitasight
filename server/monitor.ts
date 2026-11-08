@@ -7,6 +7,12 @@ import type {
   Track,
 } from "../shared/contracts.ts";
 import { Store } from "./store.ts";
+import {
+  createPostureMemory,
+  POSTURE_CONSTANTS,
+  updatePosture,
+  type PostureMemory,
+} from "./posture-rules.ts";
 
 const overlap = (a: Detection["box"], b: Detection["box"]) => {
   const area =
@@ -14,26 +20,10 @@ const overlap = (a: Detection["box"], b: Detection["box"]) => {
     Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]));
   return area / (a[2] * a[3] + b[2] * b[3] - area || 1);
 };
-export function posture(d: Detection) {
-  const p = d.points;
-  const quality = Math.min(
-    ...[0, 5, 6, 11, 12, 13, 14].map((i) => p[i].confidence),
-  );
-  if (quality < 0.6) return { score: null, quality };
-  const shoulders = (p[5].y + p[6].y) / 2,
-    hips = (p[11].y + p[12].y) / 2;
-  const torso = hips - shoulders;
-  const seated = (p[13].y + p[14].y) / 2 - hips < torso * 0.65;
-  return {
-    quality,
-    score:
-      torso > 0.03 && seated
-        ? Math.max(0, Math.min(1, (p[0].y - shoulders) / torso))
-        : 0,
-  };
-}
+
 export class Monitor {
   feeds = new Map<string, Feed>();
+  private posture = new Map<string, PostureMemory>();
   constructor(public store: Store) {}
   start(label: string, mode: Mode, now = Date.now()) {
     if (this.feeds.size >= 4)
@@ -59,6 +49,8 @@ export class Monitor {
     return feed;
   }
   stop(id: string) {
+    const feed = this.feeds.get(id);
+    if (feed) for (const t of feed.tracks) this.posture.delete(t.key);
     this.feeds.delete(id);
   }
   associate(id: string, key: string, patientId: string, now = Date.now()) {
@@ -109,7 +101,6 @@ export class Monitor {
       throw Error("Stale or out-of-order frame");
     if (new Set(detections.map((d) => d.id)).size !== detections.length)
       throw Error("Duplicate tracking identities");
-    const settings = this.store.settings();
     for (const d of detections) {
       let t = feed.tracks.find(
         (t) => t.externalId === d.id && now - t.lastSeen < 5000,
@@ -128,50 +119,92 @@ export class Monitor {
           score: null,
           since: null,
           episode: false,
+          seated: false,
+          potentialSlump: false,
+          slumpDetected: false,
+          fallDetected: false,
         };
         feed.tracks.push(t);
+        this.posture.set(t.key, createPostureMemory());
       }
       const gap = now - t.lastSeen;
       const ambiguous =
         detections.some(
           (other) => other !== d && overlap(d.box, other.box) > 0.3,
         ) || gap > 1500;
-      const measure = posture(d);
+      const memory = this.posture.get(t.key) ?? createPostureMemory();
+      this.posture.set(t.key, memory);
+      const measure = updatePosture(memory, d, ambiguous, now);
       if (ambiguous) t.patientId = null;
       Object.assign(t, {
         box: d.box,
         points: d.points,
         lastSeen: now,
         ambiguous,
-        ...measure,
+        quality: measure.quality,
+        score: measure.score,
+        seated: measure.seated,
+        potentialSlump: measure.potentialSlump,
+        slumpDetected: measure.slumpDetected,
+        fallDetected: measure.fallDetected,
       });
-      if (ambiguous || measure.quality < 0.6 || measure.score === null) {
-        t.since = null;
-        continue;
-      }
-      if (measure.score < settings.postureThreshold) {
+
+      // Clear the review episode when the person is upright this frame even if
+      // the short averaging window still looks slumped (enables a new request).
+      const uprightNow =
+        measure.headTorso === null ||
+        measure.headTorso < POSTURE_CONSTANTS.POTENTIAL_HEAD_TORSO ||
+        !measure.seated;
+      if (!measure.liveSlump && uprightNow) {
+        memory.slumpEpisode = false;
         t.since = null;
         t.episode = false;
-        continue;
+      } else if (measure.liveSlump) {
+        t.since ??= now;
+        t.episode = memory.slumpEpisode;
+        if (!memory.slumpEpisode) {
+          this.request(
+            feed,
+            t,
+            "posture",
+            "Potential slump held 3s while seated — reassessment requested.",
+            now,
+            {
+              score: measure.score ?? undefined,
+              seconds: 3,
+            },
+          );
+          memory.slumpEpisode = true;
+          t.episode = true;
+        }
       }
-      t.since ??= now;
-      if (now - t.since >= settings.sustainSeconds * 1000 && !t.episode) {
+
+      if (!measure.liveFall) memory.fallEpisode = false;
+      else if (!memory.fallEpisode) {
         this.request(
           feed,
           t,
-          "posture",
-          `Head remained lowered while seated for ${settings.sustainSeconds} seconds. Check the person in view.`,
+          "fall",
+          "Rapid collapse toward the floor — possible fall/faint. Check the person in view.",
           now,
-          {
-            score: measure.score,
-            threshold: settings.postureThreshold,
-            seconds: settings.sustainSeconds,
-          },
+          { score: 0.75, seconds: 1 },
         );
-        t.episode = true;
+        memory.fallEpisode = true;
       }
     }
-    feed.tracks = feed.tracks.filter((t) => now - t.lastSeen < 10_000);
+    const keep = new Set(
+      feed.tracks
+        .filter((t) => now - t.lastSeen < 10_000)
+        .map((t) => t.key),
+    );
+    for (const key of this.posture.keys()) {
+      if (
+        feed.tracks.some((t) => t.key === key) &&
+        !keep.has(key)
+      )
+        this.posture.delete(key);
+    }
+    feed.tracks = feed.tracks.filter((t) => keep.has(t.key));
     feed.lastFrame = timestamp;
     feed.status = "watching";
     feed.error = "";

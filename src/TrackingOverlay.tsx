@@ -1,5 +1,6 @@
 import { useId } from "react";
 import type { Track, Patient } from "../shared/contracts";
+import { trackStatusClass, trackStatusLabel } from "../shared/contracts";
 import type { FacePoint, FaceSignal, FaceTemplate } from "./usePulse";
 
 const BONES = [
@@ -175,15 +176,10 @@ export default function TrackingOverlay({
         );
         const name =
           patients.find((p) => p.id === track.patientId)?.name || track.label;
+        const status = trackStatusLabel(track);
+        const label = `${name} · ${status}`;
         return (
-          <g
-            key={track.key}
-            className={
-              track.ambiguous || track.quality < 0.6
-                ? "track-visual uncertain"
-                : "track-visual"
-            }
-          >
+          <g key={track.key} className={trackStatusClass(track)}>
             <rect
               className="track-box"
               x={x}
@@ -202,7 +198,7 @@ export default function TrackingOverlay({
                 className="track-name-bg"
                 x="0"
                 y="-19"
-                width={Math.min(240, 92 + name.length * 6)}
+                width={Math.min(360, 92 + label.length * 5.2)}
                 height="24"
                 rx="3"
               />
@@ -210,7 +206,7 @@ export default function TrackingOverlay({
                 <tspan className="track-id">
                   T{(index + 1).toString().padStart(2, "0")} /{" "}
                 </tspan>
-                {name}
+                {label}
               </text>
             </g>
           </g>
