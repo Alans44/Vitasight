@@ -48,10 +48,10 @@ const POTENTIAL_HEAD_TORSO = 0.02;
 /** Head into lower half of torso (toward hips) → deeper full-zone. */
 const FULL_HEAD_TORSO = 0.45;
 /**
- * Mid-shoulder within this fraction of box height of mid-hip → torso collapsed
- * (upper torso in the general area of lower torso).
+ * Mid-shoulder and mid-hip must sit on essentially the same line (gap / box
+ * height). Loose proximity is ignored — only near-coincident torso points count.
  */
-const TORSO_COLLAPSE = 0.28;
+const TORSO_COLLAPSE = 0.08;
 /** Potential → full SLUMP after this hold. */
 const POTENTIAL_TO_SLUMP_MS = 3000;
 /** Rapid head/shoulder→ankle or box collapse window and thresholds. */
@@ -154,8 +154,13 @@ export function updatePosture(
     const torsoLen = Math.max(0.001, hips.y - shoulders.y);
     seated = isSeated(hips, knees, ankles, torsoLen, scale);
     headTorso = (head.y - shoulders.y) / torsoLen;
+    // Prefer vertical alignment (same horizontal line); include a little X so
+    // a sideways fold still counts when points nearly coincide.
     shoulderHipGap =
-      Math.hypot(shoulders.x - hips.x, shoulders.y - hips.y) / scale;
+      Math.max(
+        Math.abs(shoulders.y - hips.y),
+        Math.abs(shoulders.x - hips.x) * 0.5,
+      ) / scale;
     headAnkle =
       ankles && visible(ankles)
         ? Math.max(0, ankles.y - head.y) / scale
