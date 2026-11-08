@@ -5,8 +5,10 @@ type Sample = {
   at: number;
   seated: boolean;
   headTorso: number;
-  /** Mid-shoulder to mid-hip Euclidean gap / box height. */
+  /** Mid-shoulder to mid-hip gap / box height. */
   shoulderHipGap: number;
+  /** Mid-shoulder to mid-knee gap / box height (1 if knees unavailable). */
+  shoulderKneeGap: number;
   headAnkle: number | null;
   shoulderAnkle: number | null;
   boxH: number;
@@ -48,10 +50,10 @@ const POTENTIAL_HEAD_TORSO = 0.02;
 /** Head into lower half of torso (toward hips) → deeper full-zone. */
 const FULL_HEAD_TORSO = 0.45;
 /**
- * Mid-shoulder and mid-hip must sit on essentially the same line (gap / box
- * height). Loose proximity is ignored — only near-coincident torso points count.
+ * Mid-shoulder near mid-hip or mid-knee (gap / box height). Tuned so normal
+ * upright seated (~0.3+) does not fire, but a folded torso does.
  */
-const TORSO_COLLAPSE = 0.08;
+const TORSO_COLLAPSE = 0.14;
 /** Potential → full SLUMP after this hold. */
 const POTENTIAL_TO_SLUMP_MS = 3000;
 /** Rapid head/shoulder→ankle or box collapse window and thresholds. */
@@ -141,6 +143,7 @@ export function updatePosture(
   let seated = false;
   let headTorso = 0;
   let shoulderHipGap = 1;
+  let shoulderKneeGap = 1;
   let headAnkle: number | null = null;
   let shoulderAnkle: number | null = null;
   let head = shoulders;
@@ -154,13 +157,12 @@ export function updatePosture(
     const torsoLen = Math.max(0.001, hips.y - shoulders.y);
     seated = isSeated(hips, knees, ankles, torsoLen, scale);
     headTorso = (head.y - shoulders.y) / torsoLen;
-    // Prefer vertical alignment (same horizontal line); include a little X so
-    // a sideways fold still counts when points nearly coincide.
     shoulderHipGap =
-      Math.max(
-        Math.abs(shoulders.y - hips.y),
-        Math.abs(shoulders.x - hips.x) * 0.5,
-      ) / scale;
+      Math.hypot(shoulders.x - hips.x, shoulders.y - hips.y) / scale;
+    shoulderKneeGap =
+      knees && visible(knees)
+        ? Math.hypot(shoulders.x - knees.x, shoulders.y - knees.y) / scale
+        : 1;
     headAnkle =
       ankles && visible(ankles)
         ? Math.max(0, ankles.y - head.y) / scale
@@ -183,6 +185,9 @@ export function updatePosture(
       shoulderHipGap: sampleOk
         ? shoulderHipGap
         : (last?.shoulderHipGap ?? shoulderHipGap),
+      shoulderKneeGap: sampleOk
+        ? shoulderKneeGap
+        : (last?.shoulderKneeGap ?? shoulderKneeGap),
       headAnkle: sampleOk ? headAnkle : (last?.headAnkle ?? headAnkle),
       shoulderAnkle: sampleOk
         ? shoulderAnkle
@@ -202,26 +207,34 @@ export function updatePosture(
     currentWindow.length > 0
       ? mean(currentWindow.map((h) => h.headTorso))
       : headTorso;
-  const curGap =
+  const curHipGap =
     currentWindow.length > 0
       ? mean(currentWindow.map((h) => h.shoulderHipGap))
       : shoulderHipGap;
+  const curKneeGap =
+    currentWindow.length > 0
+      ? mean(currentWindow.map((h) => h.shoulderKneeGap))
+      : shoulderKneeGap;
   const seatedRecent =
     currentWindow.length > 0
       ? currentWindow.filter((h) => h.seated).length >=
         currentWindow.length * 0.6
       : seated;
 
+  const torsoCollapsed =
+    curHipGap <= TORSO_COLLAPSE || curKneeGap <= TORSO_COLLAPSE;
   const potentialSlump =
     postureUsable &&
     seatedRecent &&
-    (curHeadTorso >= POTENTIAL_HEAD_TORSO || curGap <= TORSO_COLLAPSE);
+    (curHeadTorso >= POTENTIAL_HEAD_TORSO || torsoCollapsed);
   // Instant upright (even for one frame) breaks the 3s hold so a later
   // slump can open a new review episode after recovery.
+  const frameCollapsed =
+    shoulderHipGap <= TORSO_COLLAPSE || shoulderKneeGap <= TORSO_COLLAPSE;
   const frameUpright =
     !postureUsable ||
     !seated ||
-    (headTorso < POTENTIAL_HEAD_TORSO && shoulderHipGap > TORSO_COLLAPSE);
+    (headTorso < POTENTIAL_HEAD_TORSO && !frameCollapsed);
   if (potentialSlump && !frameUpright) {
     memory.potentialSince = memory.potentialSince || now;
   } else {

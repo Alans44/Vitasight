@@ -44,16 +44,33 @@ function potentialSlumpPose(x = 0.2): Detection {
   return d;
 }
 
-/** Shoulders on the same line as hips; head stays with shoulders so head-drop alone does not fire. */
+/** Shoulders near hips; head stays with shoulders so head-drop alone does not fire. */
 function collapsedTorsoPose(x = 0.2): Detection {
   const d = seatedPose(x);
   for (const i of [5, 6])
-    d.points[i] = { x: x + 0.05, y: 0.575, confidence: 0.95 };
-  d.points[0] = { x: x + 0.05, y: 0.56, confidence: 0.95 };
+    d.points[i] = { x: x + 0.05, y: 0.55, confidence: 0.95 };
+  d.points[0] = { x: x + 0.05, y: 0.53, confidence: 0.95 };
   for (const i of [3, 4])
-    d.points[i] = { x: x + 0.05, y: 0.565, confidence: 0.95 };
+    d.points[i] = { x: x + 0.05, y: 0.54, confidence: 0.95 };
   for (const i of [9, 10])
-    d.points[i] = { x: x + 0.08, y: 0.58, confidence: 0.95 };
+    d.points[i] = { x: x + 0.08, y: 0.56, confidence: 0.95 };
+  return d;
+}
+
+/** Shoulders near knees (folded forward); hips stay slightly above so hip-gap alone is weaker. */
+function shouldersNearKneesPose(x = 0.2): Detection {
+  const d = seatedPose(x);
+  for (const i of [11, 12])
+    d.points[i] = { x: x + 0.05, y: 0.48, confidence: 0.95 };
+  for (const i of [13, 14])
+    d.points[i] = { x: x + 0.08, y: 0.6, confidence: 0.95 };
+  for (const i of [5, 6])
+    d.points[i] = { x: x + 0.07, y: 0.58, confidence: 0.95 };
+  d.points[0] = { x: x + 0.07, y: 0.56, confidence: 0.95 };
+  for (const i of [3, 4])
+    d.points[i] = { x: x + 0.07, y: 0.57, confidence: 0.95 };
+  for (const i of [9, 10])
+    d.points[i] = { x: x + 0.1, y: 0.59, confidence: 0.95 };
   return d;
 }
 
@@ -183,12 +200,18 @@ test("upright seated does not trigger torso-collapse potential", () => {
   }
   const scale = 0.9;
   const upright = seatedPose();
-  const gap =
-    Math.max(
-      Math.abs(upright.points[5].y - upright.points[11].y),
-      Math.abs(upright.points[5].x - upright.points[11].x) * 0.5,
+  const hipGap =
+    Math.hypot(
+      upright.points[5].x - upright.points[11].x,
+      upright.points[5].y - upright.points[11].y,
     ) / scale;
-  assert.ok(gap > POSTURE_CONSTANTS.TORSO_COLLAPSE);
+  const kneeGap =
+    Math.hypot(
+      upright.points[5].x - upright.points[13].x,
+      upright.points[5].y - upright.points[13].y,
+    ) / scale;
+  assert.ok(hipGap > POSTURE_CONSTANTS.TORSO_COLLAPSE);
+  assert.ok(kneeGap > POSTURE_CONSTANTS.TORSO_COLLAPSE);
 });
 
 test("torso collapse while seated escalates to SLUMP after 3s", () => {
@@ -206,6 +229,26 @@ test("torso collapse while seated escalates to SLUMP after 3s", () => {
   let sawFull = false;
   for (let at = 14_000; at <= 16_000; at += 100) {
     const r = updatePosture(memory, collapsedTorsoPose(), false, at);
+    if (r.liveSlump) sawFull = true;
+  }
+  assert.equal(sawFull, true);
+  assert.equal(memory.slumpLatched, true);
+});
+
+test("shoulders near knees while seated escalates to SLUMP after 3s", () => {
+  const memory = createPostureMemory();
+  for (let at = 10_000; at < 12_000; at += 100)
+    updatePosture(memory, seatedPose(), false, at);
+  let sawPotential = false;
+  for (let at = 12_000; at < 14_000; at += 100) {
+    const r = updatePosture(memory, shouldersNearKneesPose(), false, at);
+    if (r.potentialSlump) sawPotential = true;
+    assert.equal(r.liveSlump, false);
+  }
+  assert.equal(sawPotential, true);
+  let sawFull = false;
+  for (let at = 14_000; at <= 16_000; at += 100) {
+    const r = updatePosture(memory, shouldersNearKneesPose(), false, at);
     if (r.liveSlump) sawFull = true;
   }
   assert.equal(sawFull, true);
