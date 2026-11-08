@@ -23,6 +23,7 @@ function run(command, args) {
   if (r.status !== 0) throw Error("Vision setup failed");
 }
 if (!existsSync(local)) run(python, ["-m", "venv", ".venv"]);
+run(local, ["-m", "pip", "install", "--upgrade", "pip"]);
 run(local, [
   "-m",
   "pip",
@@ -56,5 +57,5 @@ await writeFile(
   ) + "\n",
 );
 console.log(
-  "Vision installed. Restart npm start to enable camera and video sources.",
+  "Vitasight vision installed. Restart npm start to enable camera and video sources.",
 );

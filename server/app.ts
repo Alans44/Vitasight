@@ -96,7 +96,7 @@ export function createApp(store: Store, options: Options = {}) {
         signal: AbortSignal.timeout(1500),
       });
       const body = await r.json();
-      if (!r.ok || body.engine !== "reassessment-yolo11") throw Error();
+      if (!r.ok || body.engine !== "vitasight-yolo11") throw Error();
       res.json({ ready: true, engine: "YOLO11 Pose + ByteTrack" });
     } catch {
       res.json({ ready: false, engine: "Local vision service is offline" });
@@ -156,7 +156,7 @@ export function createApp(store: Store, options: Options = {}) {
       now,
       now,
     );
-    res.json({ ok: true });
+    res.json({ ok: true, feed });
   });
   app.post("/api/sources/:id/frame", async (req, res, next) => {
     const sourceId = req.params.id;
@@ -196,7 +196,7 @@ export function createApp(store: Store, options: Options = {}) {
       )
         throw Error("Mismatched pose response");
       monitor.ingest(feed.id, feed.session, result.detections, input.timestamp);
-      res.json({ ok: true });
+      res.json({ ok: true, feed });
     } catch (error) {
       const feed = monitor.feeds.get(sourceId);
       if (feed && acquired) {
@@ -244,7 +244,7 @@ export function createApp(store: Store, options: Options = {}) {
     res.json({ ok: true });
   });
   app.get("/api/export", (_req, res) =>
-    res.attachment("reassessment-events.json").json({
+    res.attachment("vitasight-events.json").json({
       version: 1,
       exportedAt: new Date().toISOString(),
       notice:

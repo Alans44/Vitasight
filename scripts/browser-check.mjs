@@ -4,22 +4,18 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
-const data = await mkdtemp(join(tmpdir(), "reassessment-browser-"));
+const data = await mkdtemp(join(tmpdir(), "vitasight-browser-"));
 const port = Number(process.env.BROWSER_TEST_PORT || 18790),
   url = `http://127.0.0.1:${port}`;
-const server = spawn(
-  process.execPath,
-  ["node_modules/tsx/dist/cli.mjs", "server/index.ts"],
-  {
-    env: {
-      ...process.env,
-      PORT: String(port),
-      DATA_PATH: join(data, "test.sqlite"),
-      POSE_PORT: "18999",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+const server = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {
+  env: {
+    ...process.env,
+    PORT: String(port),
+    DATA_PATH: join(data, "test.sqlite"),
+    POSE_PORT: "18999",
   },
-);
+  stdio: ["ignore", "pipe", "pipe"],
+});
 let logs = "";
 server.stdout.on("data", (d) => (logs += d));
 server.stderr.on("data", (d) => (logs += d));
@@ -97,7 +93,7 @@ try {
   assert.equal(exported.patients.find((p) => p.id === patient.id).priority, 3);
   assert.ok(exported.audit.some((a) => a.action === "reassess"));
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Monitor", exact: true }).click();
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
   await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
   assert.equal(
     await page.evaluate(
@@ -121,5 +117,10 @@ try {
   await new Promise((r) =>
     server.exitCode !== null ? r() : server.once("exit", r),
   );
-  await rm(data, { recursive: true, force: true });
+  await rm(data, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 200,
+  });
 }

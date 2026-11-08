@@ -1,4 +1,3 @@
-"""Local, bounded pose inference. Frames and tracker state never leave this process."""
 import base64
 import json
 import os
@@ -19,6 +18,7 @@ from ultralytics import YOLO, settings
 settings.update({'sync': False})
 torch.set_num_threads(min(4, os.cpu_count() or 1))
 WEIGHTS = ROOT / '.models' / 'yolo11n-pose.pt'
+POSE_SIZE = 416
 lock = threading.Lock()
 sessions = {}
 retired = set()
@@ -50,7 +50,7 @@ def infer(body):
     image = cv2.imdecode(np.frombuffer(base64.b64decode(jpeg.split(',', 1)[1], validate=True), dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None or image.shape[0] > 720 or image.shape[1] > 1280:
         raise ValueError('Invalid image dimensions')
-    result = entry['model'].track(image, persist=True, tracker='bytetrack.yaml', device='cpu', imgsz=640, max_det=6, conf=.3, verbose=False)[0]
+    result = entry['model'].track(image, persist=True, tracker='bytetrack.yaml', device='cpu', imgsz=POSE_SIZE, max_det=6, conf=.3, verbose=False)[0]
     entry['used'], entry['timestamp'] = now, timestamp
     detections = []
     if result.boxes is not None and result.boxes.id is not None and result.keypoints is not None:
@@ -75,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path != '/health':
             return self.reply(404, {'error': 'Not found'})
-        self.reply(200, {'engine': 'reassessment-yolo11', 'device': 'cpu'})
+        self.reply(200, {'engine': 'vitasight-yolo11', 'device': 'cpu'})
 
     def do_POST(self):
         if self.headers.get('Origin') or self.headers.get('Content-Type') != 'application/json':
@@ -112,8 +112,8 @@ if __name__ == '__main__':
     if not WEIGHTS.exists():
         raise RuntimeError('Run npm run vision:setup first')
     warmup = YOLO(str(WEIGHTS))
-    warmup.predict(np.zeros((360, 640, 3), dtype=np.uint8), device='cpu', verbose=False)
+    warmup.predict(np.zeros((360, 640, 3), dtype=np.uint8), device='cpu', imgsz=POSE_SIZE, verbose=False)
     del warmup
     port = int(os.environ.get('POSE_PORT', '8791'))
-    print(f'Local vision ready: http://127.0.0.1:{port}', flush=True)
+    print(f'Vitasight vision ready: http://127.0.0.1:{port}', flush=True)
     ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()

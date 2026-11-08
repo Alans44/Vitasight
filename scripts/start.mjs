@@ -18,13 +18,11 @@ if (visionReady)
   vision = spawn(python, ["vision/service.py"], { stdio: "inherit" });
 else
   console.log(
-    "Starting demo workspace. Optional camera/video support: npm run vision:setup",
+    "Starting Vitasight. Optional camera/video support: npm run vision:setup",
   );
-const server = spawn(
-  process.execPath,
-  ["node_modules/tsx/dist/cli.mjs", "server/index.ts"],
-  { stdio: "inherit" },
-);
+const server = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {
+  stdio: "inherit",
+});
 let stopping = false;
 const stop = () => {
   if (stopping) return;
@@ -40,5 +38,7 @@ server.on("exit", (code) => {
 });
 vision?.on("exit", () => {
   if (!stopping)
-    console.warn("Vision service stopped; demo mode remains available.");
+    console.warn(
+      "Vitasight vision service stopped; demo mode remains available.",
+    );
 });

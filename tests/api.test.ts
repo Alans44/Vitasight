@@ -93,6 +93,12 @@ test("API enforces local origin, JSON, schema bounds and live/simulation isolati
       ).status,
       200,
     );
+    const updated = await h.call(`/sources/${demo.id}/demo`, {
+      session: demo.session,
+      scene: "resting",
+    });
+    assert.equal(updated.data.feed.id, demo.id);
+    assert.equal(updated.data.feed.tracks.length, 2);
     const exported = await h.call("/export");
     assert.equal(exported.data.patients[0].mode, "demo");
     assert.equal(
@@ -126,10 +132,11 @@ test("model output is schema-checked and must match the submitted session and fr
       timestamp: Date.now(),
       jpeg: "data:image/jpeg;base64,/9j/2Q==",
     });
-    assert.equal(
-      (await h.call(`/sources/${live.id}/frame`, frame())).status,
-      200,
-    );
+    const submitted = frame();
+    const response = await h.call(`/sources/${live.id}/frame`, submitted);
+    assert.equal(response.status, 200);
+    assert.equal(response.data.feed.lastFrame, submitted.timestamp);
+    assert.equal(response.data.feed.tracks.length, 2);
     mode = "wrong-session";
     assert.equal(
       (await h.call(`/sources/${live.id}/frame`, frame())).status,

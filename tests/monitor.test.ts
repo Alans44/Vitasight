@@ -277,7 +277,7 @@ test("duplicate, future, old and expired-session observations are rejected", () 
   }
 });
 test("restart persists separate patient, event and audit records without resurrecting monitoring", () => {
-  const dir = mkdtempSync(join(tmpdir(), "reassessment-")),
+  const dir = mkdtempSync(join(tmpdir(), "vitasight-")),
     file = join(dir, "db.sqlite");
   const f = fixture();
   let saved: Store | undefined;

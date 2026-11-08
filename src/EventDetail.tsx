@@ -43,7 +43,6 @@ export default function EventDetail({
       >
         <header>
           <div>
-            <span className="eyebrow">REVIEW REQUEST</span>
             <h2 id="detail-title">{event.person}</h2>
           </div>
           <button
@@ -94,8 +93,7 @@ export default function EventDetail({
           )}
         </dl>
         <p className="muted small">
-          A request to observe and reassess. The posture score describes
-          geometry, not medical risk.
+          Posture score reflects geometry, not medical risk.
         </p>
         {!closed && (
           <>
@@ -134,9 +132,7 @@ export default function EventDetail({
             >
               Dismiss with reason
             </button>
-            <p className="small muted">
-              Recorded as {actor}. Acknowledgment keeps the request open.
-            </p>
+            <p className="small muted">Recorded as {actor}.</p>
           </>
         )}
         <h3>Activity</h3>

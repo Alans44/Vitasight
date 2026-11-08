@@ -2,9 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowUpRight,
-  Bell,
   Camera,
-  CheckCheck,
   Download,
   Film,
   FlaskConical,
@@ -12,7 +10,6 @@ import {
   ListChecks,
   Plus,
   Settings2,
-  Users,
   Volume2,
   VolumeX,
   X,
@@ -21,6 +18,9 @@ import type { Feed, Settings, Snapshot } from "../shared/contracts";
 import { api } from "./api";
 import SourceCard, { type Launch } from "./SourceCard";
 import EventDetail from "./EventDetail";
+import PatientSidebar from "./PatientSidebar";
+import VideoPlaceholder from "./VideoPlaceholder";
+import VideoLibrary from "./VideoLibrary";
 
 export default function App() {
   const [state, setState] = useState<Snapshot | null>(null),
@@ -34,7 +34,10 @@ export default function App() {
     [search, setSearch] = useState(""),
     [historyFilter, setHistoryFilter] = useState("all");
   const [actor, setActor] = useState(
-    () => localStorage.getItem("reassessment-actor") || "Local user",
+    () =>
+      localStorage.getItem("vitasight-actor") ||
+      localStorage.getItem("reassessment-actor") ||
+      "Local user",
   );
   const [sound, setSound] = useState(false),
     [vision, setVision] = useState(false),
@@ -56,16 +59,40 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const next = await api<Snapshot>("/state");
-      setState(next);
+      setState((old) => ({
+        ...next,
+        feeds: next.feeds.map((feed) => {
+          const current = old?.feeds.find(
+            (f) => f.id === feed.id && f.session === feed.session,
+          );
+          return current && current.lastFrame > feed.lastFrame ? current : feed;
+        }),
+      }));
       setOnline(true);
       setSettings((old) => old || next.settings);
     } catch {
       setOnline(false);
     }
   }, []);
+  const updateFeed = useCallback((feed: Feed) => {
+    setState((old) =>
+      old
+        ? {
+            ...old,
+            feeds: old.feeds.map((current) =>
+              current.id === feed.id &&
+              current.session === feed.session &&
+              feed.lastFrame >= current.lastFrame
+                ? feed
+                : current,
+            ),
+          }
+        : old,
+    );
+  }, []);
   useEffect(() => {
     void refresh();
-    const id = setInterval(() => void refresh(), 750);
+    const id = setInterval(() => void refresh(), 500);
     return () => clearInterval(id);
   }, [refresh]);
   useEffect(() => {
@@ -149,6 +176,7 @@ export default function App() {
         [feed.id]: { kind, stream, file: localFile },
       }));
       await refresh();
+      setScope("all");
       setTab("monitor");
     } catch (e) {
       stream?.getTracks().forEach((t) => t.stop());
@@ -175,9 +203,8 @@ export default function App() {
       (e) => scope === "all" || e.mode === scope,
     ),
     queue = events.filter((e) => ["open", "acknowledged"].includes(e.status));
-  const feeds = (state?.feeds || []).filter(
-    (f) => scope === "all" || f.mode === scope,
-  );
+  const allFeeds = state?.feeds || [];
+  const feeds = allFeeds.filter((f) => scope === "all" || f.mode === scope);
   const faults = feeds.reduce(
     (n, f) =>
       n +
@@ -190,354 +217,318 @@ export default function App() {
     disabled = adding || !online || (state?.feeds.length || 0) >= 4;
   return (
     <div className="app-shell">
-      <aside className="rail">
-        <a className="brand" href="/" aria-label="Reassessment home">
-          <span className="brand-icon">
-            <Activity size={22} />
-          </span>
-          <span>
-            reassessment
-            <span className="brand-sub">OBSERVE. REVIEW. RESPOND.</span>
-          </span>
-        </a>
-        <div className="rail-caption">WORKSPACE</div>
-        <nav>
+      <header className="workspace-tabs">
+        <nav aria-label="Workspace tabs">
           {[
-            ["monitor", "Monitor", LayoutDashboard],
-            ["events", "Event history", ListChecks],
-            ["settings", "Configuration", Settings2],
+            ["monitor", "Dashboard", LayoutDashboard],
+            ["library", "Library", Film],
+            ["live", "Direct Feed", Camera],
           ].map(([id, label, Icon]) => {
             const Item = Icon as typeof Activity;
             return (
               <button
                 key={String(id)}
-                className={tab === id ? "nav-item active" : "nav-item"}
-                onClick={() => setTab(String(id))}
+                className={
+                  tab === id ? "workspace-tab active" : "workspace-tab"
+                }
+                aria-label={String(label)}
+                aria-current={tab === id ? "page" : undefined}
+                onClick={() => {
+                  setTab(String(id));
+                  if (id === "live") setScope("live");
+                  if (id === "monitor") setScope("all");
+                }}
               >
-                <Item size={18} />
+                <Item size={15} />
                 {String(label)}
-                {id === "events" && (
-                  <span className="nav-count">{state?.events.length || 0}</span>
-                )}
               </button>
             );
           })}
         </nav>
-        <div className="rail-bottom">
-          <span className="local-pill">
+        <div className="workspace-actions">
+          <span className="app-wordmark">
+            <Activity size={18} />
+            Vitasight
+          </span>
+          <span className="workspace-divider" />
+          <button
+            className={tab === "events" ? "icon-button active" : "icon-button"}
+            title="Event history"
+            aria-label="Event history"
+            onClick={() => setTab("events")}
+          >
+            <ListChecks size={17} />
+          </button>
+          <button
+            className={
+              tab === "settings" ? "icon-button active" : "icon-button"
+            }
+            title="Configuration"
+            aria-label="Configuration"
+            onClick={() => setTab("settings")}
+          >
+            <Settings2 size={17} />
+          </button>
+          <button
+            className="icon-button"
+            title={sound ? "Mute alerts" : "Enable sound"}
+            aria-label={sound ? "Mute alerts" : "Enable sound"}
+            aria-pressed={sound}
+            onClick={() => {
+              if (!sound) {
+                soundContext.current ??= new AudioContext();
+                void soundContext.current.resume();
+              }
+              setSound(!sound);
+            }}
+          >
+            {sound ? <Volume2 size={17} /> : <VolumeX size={17} />}
+          </button>
+          <span
+            className="connection-indicator"
+            title={online ? "Connected" : "Connecting"}
+          >
             <span className={"signal " + (online ? "on" : "")} />
-            {online ? "Local workspace" : "Connecting…"}
           </span>
-          <p>
-            Research prototype
-            <br />
-            Human review remains essential.
-          </p>
-          <small>v0.1 · Independent build</small>
         </div>
-      </aside>
+      </header>
       <main>
-        <header className="topbar">
-          <span className="breadcrumb">
-            Workspace <span>/</span>{" "}
-            {tab === "monitor"
-              ? "Live observation"
-              : tab === "events"
-                ? "Event history"
-                : "Configuration"}
-          </span>
-          <div className="row">
-            <button
-              className="icon-button"
-              title={sound ? "Mute local alerts" : "Enable local alert sound"}
-              aria-label={sound ? "Mute alerts" : "Enable sound"}
-              aria-pressed={sound}
-              onClick={() => {
-                if (!sound) {
-                  soundContext.current ??= new AudioContext();
-                  void soundContext.current.resume();
-                }
-                setSound(!sound);
-              }}
-            >
-              {sound ? <Volume2 size={18} /> : <VolumeX size={18} />}
-            </button>
-            <span className="operator-badge">
-              {actor.slice(0, 2).toUpperCase()}
-            </span>
-            <span className="operator-name">{actor}</span>
-          </div>
-        </header>
         <div className="content">
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">
-                {tab === "monitor"
-                  ? "A CLEARER PICTURE"
-                  : tab === "events"
-                    ? "EVERY RESPONSE, RECORDED"
-                    : "MAKE IT YOUR WORKSPACE"}
-              </div>
-              <h1>
-                {tab === "monitor"
-                  ? "Keep the next check in sight."
-                  : tab === "events"
-                    ? "Event history"
-                    : "Configuration"}
-              </h1>
-              <p>
-                {tab === "monitor"
-                  ? "Observe visible changes. Give every review request a recorded response."
-                  : tab === "events"
-                    ? "A timeline of observations, decisions, and reassessments."
-                    : "Local controls for observation rules and your recorded actions."}
-              </p>
-            </div>
-            {tab !== "settings" && (
-              <a className="button secondary" href="/api/export" download>
-                <Download size={16} /> Export log
-              </a>
-            )}
-          </div>
           {!online && (
             <div className="banner warning" role="status">
               The local server is unavailable. Displayed observations may be
               stale.
             </div>
           )}
-          {tab !== "settings" && (
-            <div className="scope-bar">
-              <div className="segmented" aria-label="Workspace filter">
-                {["all", "live", "demo"].map((x) => (
-                  <button
-                    key={x}
-                    className={scope === x ? "selected" : ""}
-                    onClick={() => setScope(x)}
-                  >
-                    {x === "all"
-                      ? "All sources"
-                      : x === "live"
-                        ? "Live"
-                        : "Simulated"}
-                  </button>
-                ))}
+          <div
+            className={
+              "monitor-layout " + (tab === "live" ? "direct-feed" : "")
+            }
+            hidden={tab !== "monitor" && tab !== "live"}
+          >
+            <section className="camera-workspace" aria-label="Sources">
+              <div className="model-status-row">
+                <span className={"model-status " + (vision ? "ready" : "")}>
+                  <span className={"signal " + (vision ? "on" : "")} />
+                  {vision ? "Local vision active" : "Local vision offline"}
+                </span>
+                <span>
+                  {feeds.length} / 4 sources
+                  {faults > 0
+                    ? ` · ${faults} visibility ${faults === 1 ? "issue" : "issues"}`
+                    : ""}
+                </span>
               </div>
-              <span className="small muted">
-                {vision
-                  ? "Local vision engine ready"
-                  : "Demo ready · vision service offline"}
-              </span>
-            </div>
-          )}
-          {tab === "monitor" && (
-            <>
-              <div className="stats">
-                <div>
-                  <span>
-                    <Camera size={16} /> Active sources
-                  </span>
-                  <strong>{feeds.length.toString().padStart(2, "0")}</strong>
-                  <small>Up to four independent feeds</small>
-                </div>
-                <div>
-                  <span>
-                    <Bell size={16} /> Awaiting review
-                  </span>
-                  <strong className={queue.length ? "attention" : ""}>
-                    {queue.length.toString().padStart(2, "0")}
-                  </strong>
-                  <small>Open and acknowledged requests</small>
-                </div>
-                <div>
-                  <span>
-                    <Users size={16} /> Visibility issues
-                  </span>
-                  <strong>{faults.toString().padStart(2, "0")}</strong>
-                  <small>Separate from review requests</small>
-                </div>
-              </div>
-              <div className="workspace-grid">
-                <section>
-                  <div className="section-title">
-                    <div>
-                      <h2>
-                        Sources <span>{feeds.length}</span>
-                      </h2>
-                      <p>Camera feeds and local videos</p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => setPersonForm(true)}
-                    >
-                      <Plus size={15} /> Add person
-                    </button>
+              {feeds.length === 0 && (
+                <div className="empty-sources">
+                  <div className="empty-camera">
+                    <Camera size={40} strokeWidth={1} />
+                    <span>No active cameras</span>
                   </div>
-                  {devices.length > 1 && (
-                    <label className="camera-select">
-                      Camera device
-                      <select
-                        aria-label="Camera device"
-                        value={cameraId}
-                        onChange={(e) => setCameraId(e.target.value)}
-                      >
-                        <option value="">Default camera</option>
-                        {devices.map((d, i) => (
-                          <option key={d.deviceId} value={d.deviceId}>
-                            {d.label || `Camera ${i + 1}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <div className="source-tools">
-                    <button
-                      disabled={disabled || !vision}
-                      onClick={() => void addSource("camera")}
-                      title={
-                        !vision
-                          ? "Run npm run vision:setup to enable local vision"
-                          : ""
-                      }
-                    >
-                      <Camera size={16} /> Camera
-                    </button>
-                    <button
-                      disabled={disabled || !vision}
-                      onClick={() => file.current?.click()}
-                    >
-                      <Film size={16} /> Local video
-                    </button>
-                    <button
-                      className="demo-button"
-                      disabled={disabled}
-                      onClick={() => void addSource("demo")}
-                    >
-                      <FlaskConical size={16} /> Start demo
-                    </button>
-                    <input
-                      ref={file}
-                      type="file"
-                      accept="video/*"
-                      hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void addSource("video", f);
-                        e.target.value = "";
-                      }}
+                  <span className="empty-source-label">CAM 01</span>
+                </div>
+              )}
+              <div
+                className={`sources-grid ${feeds.length > 1 ? "multiple" : ""}`}
+                hidden={feeds.length === 0}
+              >
+                {allFeeds.map((feed) => (
+                  <div
+                    className="source-slot"
+                    key={feed.id}
+                    hidden={!feeds.some((visible) => visible.id === feed.id)}
+                  >
+                    <SourceCard
+                      feed={feed}
+                      launch={launches[feed.id]}
+                      patients={state?.patients || []}
+                      threshold={state?.settings.postureThreshold ?? 0.45}
+                      refresh={refresh}
+                      onFeed={updateFeed}
+                      report={setError}
+                      onStop={() => void stop(feed.id)}
                     />
                   </div>
-                  {feeds.length === 0 ? (
-                    <div className="empty-sources">
-                      <div className="empty-graphic">
-                        <Camera size={38} />
-                        <span className="corner a" />
-                        <span className="corner b" />
-                      </div>
-                      <h3>A quiet workspace, ready to observe.</h3>
-                      <p>
-                        Start a simulated scene to try the complete review
-                        workflow.
-                        <br />
-                        Connect the local vision engine for a camera or video.
-                      </p>
-                      <button
-                        className="primary"
-                        disabled={disabled}
-                        onClick={() => void addSource("demo")}
-                      >
-                        <FlaskConical size={16} /> Try a simulated scene{" "}
-                        <ArrowUpRight size={16} />
-                      </button>
-                      <small>
-                        No credentials. No uploads. Fictional people only.
-                      </small>
-                    </div>
-                  ) : (
-                    <div className="sources-grid">
-                      {feeds.map((feed) => (
-                        <SourceCard
-                          key={feed.id}
-                          feed={feed}
-                          launch={launches[feed.id]}
-                          patients={state?.patients || []}
-                          threshold={state?.settings.postureThreshold ?? 0.45}
-                          refresh={refresh}
-                          report={setError}
-                          onStop={() => void stop(feed.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <div className="privacy-note">
-                    <span className="signal on" /> Frames stay on this computer.
-                    Only review records are saved.
-                  </div>
-                </section>
-                <aside className="review-panel">
-                  <div className="section-title">
-                    <div>
-                      <h2>
-                        Review queue <span>{queue.length}</span>
-                      </h2>
-                      <p>Visible changes, ready for a check</p>
-                    </div>
-                    <Bell size={18} />
-                  </div>
-                  {queue.length === 0 ? (
-                    <div className="queue-empty">
-                      <CheckCheck size={30} />
-                      <h3>No requests waiting</h3>
-                      <p>
-                        New observations will appear here.
-                        <br />
-                        An empty queue does not establish that someone is
-                        clinically stable.
-                      </p>
-                    </div>
-                  ) : (
-                    queue.map((e) => (
-                      <button
-                        className="event-card"
-                        key={e.id}
-                        onClick={() => setSelected(e.id)}
-                      >
-                        <div className="row between">
-                          <span className="event-kind">
-                            {e.kind === "posture"
-                              ? "POSTURE CHANGE"
-                              : "REASSESSMENT DUE"}
-                          </span>
-                          <ArrowUpRight size={16} />
-                        </div>
-                        <strong>{e.person}</strong>
-                        <p>{e.reason}</p>
-                        <div className="row between">
-                          <small>{e.source}</small>
-                          <span
-                            className={
-                              "tag " + (e.mode === "demo" ? "demo" : "")
-                            }
-                          >
-                            {e.mode === "demo" ? "SIMULATED" : "LIVE"}
-                          </span>
-                        </div>
-                        <footer>
-                          <span className={"status " + e.status}>
-                            {e.status}
-                          </span>
-                          <time>
-                            {new Date(e.createdAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </time>
-                        </footer>
-                      </button>
-                    ))
-                  )}
-                </aside>
+                ))}
               </div>
-            </>
+              <section
+                className="source-control-panel"
+                aria-label="Source controls"
+              >
+                <div className="panel-title-row">
+                  <h2>Available cameras</h2>
+                  <span>
+                    {devices.length}{" "}
+                    {devices.length === 1 ? "device" : "devices"}
+                  </span>
+                </div>
+                {devices.length > 1 && (
+                  <label className="camera-select">
+                    Camera device
+                    <select
+                      aria-label="Camera device"
+                      value={cameraId}
+                      onChange={(e) => setCameraId(e.target.value)}
+                    >
+                      <option value="">Default camera</option>
+                      {devices.map((device, i) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Camera ${i + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="source-tools">
+                  <button
+                    disabled={disabled || !vision}
+                    onClick={() => void addSource("camera")}
+                    title={!vision ? "Local vision is offline" : "Start camera"}
+                  >
+                    <Camera size={14} />
+                    Camera
+                  </button>
+                  <button
+                    disabled={disabled || !vision}
+                    onClick={() => file.current?.click()}
+                  >
+                    <Film size={14} />
+                    Video
+                  </button>
+                  <button
+                    className="demo-button"
+                    disabled={disabled}
+                    onClick={() => void addSource("demo")}
+                  >
+                    <FlaskConical size={14} />
+                    Start demo
+                  </button>
+                  <button
+                    className="text-button add-person"
+                    onClick={() => setPersonForm(true)}
+                  >
+                    <Plus size={14} />
+                    Add person
+                  </button>
+                  <input
+                    ref={file}
+                    type="file"
+                    accept="video/*"
+                    hidden
+                    onChange={(e) => {
+                      const videoFile = e.target.files?.[0];
+                      if (videoFile) void addSource("video", videoFile);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                <div className="source-panel-footer">
+                  <div className="segmented" aria-label="Workspace filter">
+                    {["all", "live", "demo"].map((scopeValue) => (
+                      <button
+                        key={scopeValue}
+                        className={scope === scopeValue ? "selected" : ""}
+                        onClick={() => setScope(scopeValue)}
+                      >
+                        {scopeValue === "all"
+                          ? "All sources"
+                          : scopeValue === "live"
+                            ? "Live"
+                            : "Simulated"}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="local-processing">
+                    <span className="signal on" />
+                    Local processing
+                  </span>
+                </div>
+              </section>
+              <section className="dashboard-event-log" aria-label="Event log">
+                <div className="panel-title-row">
+                  <h2>Event log</h2>
+                  <button
+                    className="text-button"
+                    onClick={() => setTab("events")}
+                  >
+                    View all
+                    <ArrowUpRight size={13} />
+                  </button>
+                </div>
+                {(state?.audit.length || 0) === 0 ? (
+                  <p className="log-empty">No events yet.</p>
+                ) : (
+                  <div className="log-list">
+                    {state?.audit.slice(0, 6).map((entry) => (
+                      <div className="log-row" key={entry.id}>
+                        <time>
+                          {new Date(entry.at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </time>
+                        <span className={entry.eventId ? "log-attention" : ""}>
+                          {entry.action}
+                        </span>
+                        <span className="log-note">{entry.note}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+              <section
+                className="dashboard-video-library"
+                aria-label="Video placeholders"
+              >
+                <div className="panel-title-row">
+                  <h2>Video sources</h2>
+                  <button
+                    className="text-button"
+                    onClick={() => setTab("library")}
+                  >
+                    Library
+                    <ArrowUpRight size={13} />
+                  </button>
+                </div>
+                <div className="placeholder-grid">
+                  {[1, 2, 3].map((number) => (
+                    <VideoPlaceholder
+                      key={number}
+                      label={`Waiting room ${String(number).padStart(2, "0")}`}
+                      number={String(number).padStart(2, "0")}
+                    />
+                  ))}
+                </div>
+              </section>
+            </section>
+            <PatientSidebar
+              feeds={feeds}
+              patients={state?.patients || []}
+              events={queue}
+              onReview={setSelected}
+              onAddPerson={() => setPersonForm(true)}
+            />
+          </div>
+          {tab === "library" && (
+            <VideoLibrary
+              onChooseVideo={() => file.current?.click()}
+              disabled={disabled || !vision}
+            />
+          )}
+          {(tab === "events" || tab === "settings") && (
+            <div className="page-heading-row">
+              <div>
+                <span className="page-breadcrumb">Vitasight / Workspace</span>
+                <h1>{tab === "events" ? "Event history" : "Configuration"}</h1>
+              </div>
+              {tab === "events" && (
+                <a className="button secondary" href="/api/export" download>
+                  <Download size={14} />
+                  Export log
+                </a>
+              )}
+            </div>
           )}
           {tab === "events" && (
             <section className="history-panel">
@@ -549,6 +540,15 @@ export default function App() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
+                <select
+                  aria-label="Event origin"
+                  value={scope}
+                  onChange={(e) => setScope(e.target.value)}
+                >
+                  <option value="all">All sources</option>
+                  <option value="live">Live</option>
+                  <option value="demo">Simulated</option>
+                </select>
                 <select
                   aria-label="Event status"
                   value={historyFilter}
@@ -619,10 +619,7 @@ export default function App() {
                   </tbody>
                 </table>
                 {events.length === 0 && (
-                  <p className="table-empty">
-                    No events recorded yet. Start a scene in Monitor to try the
-                    workflow.
-                  </p>
+                  <p className="table-empty">No events recorded.</p>
                 )}
               </div>
             </section>
@@ -630,22 +627,16 @@ export default function App() {
           {tab === "settings" && settings && (
             <div className="settings-grid">
               <section className="settings-card">
-                <h2>Your workspace</h2>
-                <p>
-                  Used in the action history. This label is not an authenticated
-                  identity.
-                </p>
+                <h2>Operator</h2>
+                <p>Name shown in recorded actions.</p>
                 <label className="field">
-                  Your name or initials
+                  Name or initials
                   <input
                     maxLength={60}
                     value={actor}
                     onChange={(e) => {
                       setActor(e.target.value);
-                      localStorage.setItem(
-                        "reassessment-actor",
-                        e.target.value,
-                      );
+                      localStorage.setItem("vitasight-actor", e.target.value);
                     }}
                   />
                 </label>
@@ -653,15 +644,14 @@ export default function App() {
                   <span className={"signal " + (vision ? "on" : "")} />
                   <div>
                     <strong>
-                      {vision
-                        ? "Local vision connected"
-                        : "Local vision is optional"}
+                      {vision ? "Vision connected" : "Vision offline"}
                     </strong>
-                    <p>
-                      Demo mode is always available. Enable camera and
-                      local-video inference with{" "}
-                      <code>npm run vision:setup</code>, then restart.
-                    </p>
+                    {!vision && (
+                      <p>
+                        Enable camera and video:{" "}
+                        <code>npm run vision:setup</code>, then restart.
+                      </p>
+                    )}
                   </div>
                 </div>
               </section>
@@ -679,10 +669,7 @@ export default function App() {
                 }}
               >
                 <h2>Observation rules</h2>
-                <p>
-                  Experimental posture rules generate reassessment requests.
-                  They do not assign triage or estimate vital signs.
-                </p>
+                <p>Experimental rules. Human review required.</p>
                 <label className="field">
                   Sustain window (seconds)
                   <input
@@ -738,10 +725,6 @@ export default function App() {
               </form>
             </div>
           )}
-          <footer className="page-footer">
-            <span>REASSESSMENT</span> Local research workspace · No diagnosis or
-            automated triage
-          </footer>
         </div>
       </main>
       {error && (
@@ -803,9 +786,7 @@ export default function App() {
                 <X />
               </button>
             </div>
-            <p className="muted">
-              Use fictional records for this research workspace.
-            </p>
+            <p className="muted">Fictional records only.</p>
             <label className="field">
               Name or label
               <input autoFocus name="name" required maxLength={60} />

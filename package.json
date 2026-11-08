@@ -1,5 +1,5 @@
 {
-  "name": "reassessment",
+  "name": "vitasight",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,18 +7,22 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "predev": "node scripts/setup-face.mjs",
     "dev": "vite --host 127.0.0.1",
     "server": "tsx server/index.ts",
+    "prebuild": "node scripts/setup-face.mjs",
     "build": "tsc --noEmit && vite build",
     "start": "node scripts/start.mjs",
     "test": "tsx --test tests/*.test.ts",
     "check": "npm test && npm run build",
     "vision:setup": "node scripts/setup-vision.mjs",
     "test:browser": "node scripts/browser-check.mjs",
+    "test:pulse": "node scripts/pulse-browser-check.mjs",
     "format": "prettier --write src server shared tests scripts docs *.ts *.json *.html README.md .github",
     "format:check": "prettier --check src server shared tests scripts docs *.ts *.json *.html README.md .github"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.2.2",
     "express": "5.1.0",
     "lucide-react": "0.468.0",
     "react": "19.2.0",
