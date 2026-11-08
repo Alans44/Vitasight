@@ -118,6 +118,7 @@ export class SmsService {
         enabled: input.enabled,
         recipient: input.recipient,
         includeDemo: input.includeDemo,
+        trialTemplate: input.trialTemplate,
       },
       input.actor,
     );
@@ -140,6 +141,7 @@ export class SmsService {
       snapshot.preferences.recipient,
       "Vitasight test: text alerts are connected. New waiting-room events will include what happened, the source, and the time.",
       this.now(),
+      snapshot.preferences.trialTemplate,
     );
   }
   tick(): Promise<void> {
@@ -196,7 +198,7 @@ export class SmsService {
           body: new URLSearchParams({
             To: message.recipient,
             From: credentials.fromNumber,
-            Body: message.body,
+            Body: message.template || message.body,
           }),
           signal: AbortSignal.timeout(8000),
         },
@@ -208,7 +210,10 @@ export class SmsService {
         this.store.updateSms({
           ...message,
           status: response.status >= 500 ? "unknown" : "failed",
-          error: `Twilio rejected or could not confirm the text${code}. Check the sender settings and provider log.`,
+          error:
+            body?.code === 572006
+              ? "This Twilio trial only accepts predefined templates. Choose a trial format in Text alerts."
+              : `Twilio rejected or could not confirm the text${code}. Check the sender settings and provider log.`,
           updatedAt: this.now(),
         });
         return;

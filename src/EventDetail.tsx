@@ -71,6 +71,12 @@ export default function EventDetail({
               <span className={"sms-status sms-" + message.status}>
                 {smsStatusLabel[message.status]}
               </span>
+              {message.template && (
+                <p className="small muted">
+                  Uses a Twilio trial template; the full description is stored
+                  in this log.
+                </p>
+              )}
               {message.error && (
                 <p className="notification-error">{message.error}</p>
               )}

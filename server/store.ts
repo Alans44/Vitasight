@@ -138,18 +138,22 @@ export class Store {
             sms.recipient,
             eventText(event),
             event.createdAt,
+            sms.trialTemplate,
           );
       }
       return !!result.changes;
     });
   }
   smsPreferences(): SmsPreferences {
-    return JSON.parse(
-      String(
-        this.db.prepare("SELECT payload FROM sms_settings WHERE id=1").get()!
-          .payload,
+    return {
+      trialTemplate: "",
+      ...JSON.parse(
+        String(
+          this.db.prepare("SELECT payload FROM sms_settings WHERE id=1").get()!
+            .payload,
+        ),
       ),
-    );
+    };
   }
   configureSms(preferences: SmsPreferences, actor: string) {
     this.transaction(() => {
@@ -162,6 +166,7 @@ export class Store {
           message.mode !== "test" &&
           (!preferences.enabled ||
             message.recipient !== preferences.recipient ||
+            (message.template || "") !== preferences.trialTemplate ||
             (message.mode === "demo" && !preferences.includeDemo))
         )
           this.updateSms({
@@ -206,6 +211,7 @@ export class Store {
     recipient: string,
     body: string,
     now = Date.now(),
+    template: SmsPreferences["trialTemplate"] = "",
   ) {
     const message: SmsNotification = {
       id: randomUUID(),
@@ -213,6 +219,7 @@ export class Store {
       mode,
       recipient,
       body,
+      template,
       status: "pending",
       providerId: null,
       error: "",

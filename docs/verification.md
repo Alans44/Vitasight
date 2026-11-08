@@ -4,7 +4,7 @@ The original baseline below was verified with Node 24.18.0, npm 11.16.0, Python 
 
 ## Waiting-room texts
 
-Twenty-nine automated tests pass, including event-to-SMS deduplication, provider acceptance versus delivery, disabled alerts, simulated-event opt-in, no history replay, persistent queues, interrupted sends, expired alerts, recipient changes, test cooldown, credential redaction, and the local configuration/export API. SMS delivery is exercised with controlled Twilio API responses. Live Twilio authentication was checked separately; actual phone delivery still requires an SMS-capable sender and a receiving number. The existing pose and pulse rules are unchanged.
+Thirty automated tests pass, including event-to-SMS deduplication, provider acceptance versus delivery, disabled alerts, simulated-event opt-in, no history replay, persistent queues, interrupted sends, expired alerts, recipient changes, test cooldown, credential redaction, trial templates, and the local configuration/export API. SMS behavior is exercised with controlled Twilio API responses. A real Twilio trial test was also sent to the configured verified recipient, and Twilio reported carrier-confirmed delivery. The trial rejected custom text with error 572006; the supported trial template sends successfully while event details remain in the local log. The existing pose and pulse rules are unchanged.
 
 ## Frontend updates
 
@@ -46,4 +46,4 @@ The actual vision installation used a temporary environment. The Desktop reposit
 
 ## Not established
 
-No real camera permission flow, consenting live-participant study, clinical heart-rate accuracy benchmark, medical sensitivity/specificity, cross-camera identity recognition, hospital deployment, or external message delivery was validated. The pose and modulated portrait fixtures are engineering tests. Multi-feed throughput, live pulse accuracy, and seated-posture reliability need testing on the intended machine and footage. The software has no breathing model. Optional text notifications do not establish clinical accuracy or staff response.
+No real camera permission flow, consenting live-participant study, clinical heart-rate accuracy benchmark, medical sensitivity/specificity, cross-camera identity recognition, or hospital deployment was validated. The pose and modulated portrait fixtures are engineering tests. Multi-feed throughput, live pulse accuracy, and seated-posture reliability need testing on the intended machine and footage. The software has no breathing model. Optional text notifications do not establish clinical accuracy or staff response.

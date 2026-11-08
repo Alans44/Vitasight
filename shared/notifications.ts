@@ -18,3 +18,9 @@ export const smsStatusLabel: Record<SmsNotification["status"], string> = {
   unknown: "SMS status unknown",
   canceled: "SMS canceled",
 };
+export const smsTemplateLabel = {
+  "": "Detailed event text",
+  sms_internal_alerts: "Trial: Internal alerts",
+  sms_event_notifications: "Trial: Event notifications",
+  sms_appointment_reminders: "Trial: Appointment reminders",
+};

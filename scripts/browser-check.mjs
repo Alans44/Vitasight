@@ -59,6 +59,9 @@ try {
     name: "Text alerts",
     exact: true,
   });
+  await textAlerts
+    .getByLabel("Message format")
+    .selectOption("sms_internal_alerts");
   await textAlerts.getByLabel("Recipient phone number").fill("+15005550009");
   await textAlerts.getByRole("button", { name: "Save text settings" }).click();
   await textAlerts

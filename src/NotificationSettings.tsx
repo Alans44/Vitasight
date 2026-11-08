@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { MessageSquare, Send } from "lucide-react";
 import type { SmsSnapshot } from "../shared/contracts";
-import { smsStatusLabel } from "../shared/notifications";
+import { smsStatusLabel, smsTemplateLabel } from "../shared/notifications";
+import type { SmsPreferences } from "../shared/contracts";
 import { api } from "./api";
 
 export default function NotificationSettings({
@@ -112,6 +113,31 @@ export default function NotificationSettings({
               }
             />
           </label>
+          <label className="field">
+            Message format
+            <select
+              value={preferences.trialTemplate}
+              onChange={(e) =>
+                setPreferences({
+                  ...preferences,
+                  trialTemplate: e.target
+                    .value as SmsPreferences["trialTemplate"],
+                })
+              }
+            >
+              {Object.entries(smsTemplateLabel).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {preferences.trialTemplate && (
+            <p className="small muted">
+              Trial texts use Twilio’s fixed template. Full event details stay
+              in the log.
+            </p>
+          )}
           <label className="notification-checkbox">
             <input
               type="checkbox"
@@ -217,6 +243,12 @@ export default function NotificationSettings({
                       {new Date(message.createdAt).toLocaleTimeString()}
                     </time>
                   </div>
+                  {message.template && (
+                    <p className="small muted">
+                      {smsTemplateLabel[message.template]} · Event details below
+                      are local.
+                    </p>
+                  )}
                   <p className="sms-body">{message.body}</p>
                   {message.error && (
                     <p className="notification-error">{message.error}</p>

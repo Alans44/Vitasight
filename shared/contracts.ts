@@ -112,6 +112,14 @@ export const smsPreferencesSchema = z.object({
   enabled: z.boolean(),
   recipient: phoneSchema.or(z.literal("")),
   includeDemo: z.boolean(),
+  trialTemplate: z
+    .enum([
+      "",
+      "sms_internal_alerts",
+      "sms_event_notifications",
+      "sms_appointment_reminders",
+    ])
+    .default(""),
 });
 export const smsConfigurationSchema = smsPreferencesSchema.extend({
   actor: z.string().trim().min(1).max(60),
@@ -130,6 +138,7 @@ export type SmsNotification = {
   mode: Mode | "test";
   recipient: string;
   body: string;
+  template?: SmsPreferences["trialTemplate"];
   status:
     | "pending"
     | "sending"

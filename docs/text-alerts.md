@@ -8,6 +8,8 @@ New sustained posture events and reassessment reminders are saved with their sou
 
 Save the settings and use **Send test text** to check the connection. Enable **Send automatic text alerts** for future events. Simulated events have a separate opt-in switch and are identified in the text.
 
+For the current Twilio free trial, choose a **Trial** message format and use the shared sender assigned to your verified recipient in Twilio's console. Trial accounts require predefined SMS templates and reject custom bodies with error 572006. The event still triggers a real SMS, but its content is Twilio's fixed example; the full Vitasight description remains in the local log. Detailed event text requires an account that supports custom SMS. See [Twilio's trial SMS restrictions](https://www.twilio.com/docs/usage/trials/try-out-sms).
+
 Each event queues one SMS in SQLite, independently of capture and inference. Acknowledging an event or reloading a page does not send it again. The interface distinguishes locally pending, provider-accepted, sent, delivered, failed, and unknown messages. Delivery is checked through Twilio's API because the application runs on localhost; no public webhook is required.
 
 Ambiguous network failures are not blindly retried. Pending event texts are canceled when their recipient or enabled state changes, and unsent alerts expire after five minutes. Enabling notifications does not resend old events.

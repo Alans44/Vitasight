@@ -18,10 +18,37 @@ const credentials = {
 };
 const providerId = "SM" + "3".repeat(32);
 const preferences = {
+  trialTemplate: "" as const,
   enabled: true,
   recipient: "+15005550009",
   includeDemo: false,
 };
+test("trial mode sends the approved template while retaining the full local event description", async () => {
+  const store = new Store(":memory:");
+  let submitted = "";
+  const sms = new SmsService(store, {
+    credentials,
+    fetcher: async (_url, init) => {
+      submitted = new URLSearchParams(String(init?.body)).get("Body")!;
+      return Response.json({ sid: providerId, status: "queued" });
+    },
+  });
+  try {
+    sms.configure({
+      ...preferences,
+      trialTemplate: "sms_internal_alerts",
+      actor: "Operator",
+    });
+    store.create(event(Date.now()));
+    await sms.tick();
+    assert.equal(submitted, "sms_internal_alerts");
+    assert.match(store.smsNotifications()[0].body, /Head remained lowered/);
+    assert.equal(store.smsNotifications()[0].template, "sms_internal_alerts");
+    assert.equal(store.smsNotifications()[0].status, "queued");
+  } finally {
+    store.close();
+  }
+});
 const event = (now: number, mode: "live" | "demo" = "live"): ReviewEvent => ({
   id: randomUUID(),
   feedId: randomUUID(),
