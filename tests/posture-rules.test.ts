@@ -4,6 +4,7 @@ import type { Detection } from "../shared/contracts.ts";
 import {
   createPostureMemory,
   isSeated,
+  kneeBendDegrees,
   POSTURE_CONSTANTS,
   updatePosture,
 } from "../server/posture-rules.ts";
@@ -136,6 +137,11 @@ test("isSeated: folded thighs vs standing legs", () => {
     y: (standing.points[13].y + standing.points[14].y) / 2,
     confidence: 0.95,
   };
+  const sAnkles = {
+    x: (standing.points[15].x + standing.points[16].x) / 2,
+    y: (standing.points[15].y + standing.points[16].y) / 2,
+    confidence: 0.95,
+  };
   const sShoulders = {
     x: (standing.points[5].x + standing.points[6].x) / 2,
     y: (standing.points[5].y + standing.points[6].y) / 2,
@@ -145,6 +151,29 @@ test("isSeated: folded thighs vs standing legs", () => {
     isSeated(sHips, sKnees, undefined, sHips.y - sShoulders.y, 0.9),
     false,
   );
+  assert.ok(
+    kneeBendDegrees(sHips, sKnees, sAnkles) >= POSTURE_CONSTANTS.SEATED_KNEE_DEG,
+  );
+  assert.equal(
+    isSeated(sHips, sKnees, sAnkles, sHips.y - sShoulders.y, 0.9),
+    false,
+  );
+});
+
+test("isSeated: knee bend under 150° marks seated even with long thighs", () => {
+  const hips = { x: 0.25, y: 0.35, confidence: 0.95 };
+  const knees = { x: 0.4, y: 0.65, confidence: 0.95 };
+  const ankles = { x: 0.22, y: 0.72, confidence: 0.95 };
+  const deg = kneeBendDegrees(hips, knees, ankles);
+  assert.ok(deg < POSTURE_CONSTANTS.SEATED_KNEE_DEG);
+  // Thigh length alone would look standing (knees far below hips).
+  const torso = 0.25;
+  const scale = 0.9;
+  assert.equal(
+    Math.max(0, knees.y - hips.y) < Math.max(torso * 0.65, scale * 0.2),
+    false,
+  );
+  assert.equal(isSeated(hips, knees, ankles, torso, scale), true);
 });
 
 test("seated upright reports seated; standing does not", () => {

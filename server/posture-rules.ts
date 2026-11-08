@@ -77,7 +77,27 @@ const mid = (a?: Point, b?: Point) =>
       }
     : undefined;
 
-/** Seated when hips are close to knees (folded thighs), with ankle fallback. */
+/** Interior hip–knee–ankle angle in degrees (180 ≈ straight leg). */
+export function kneeBendDegrees(
+  hips: Point,
+  knees: Point,
+  ankles: Point,
+): number {
+  const ux = hips.x - knees.x,
+    uy = hips.y - knees.y;
+  const vx = ankles.x - knees.x,
+    vy = ankles.y - knees.y;
+  const du = Math.hypot(ux, uy),
+    dv = Math.hypot(vx, vy);
+  if (du < 1e-6 || dv < 1e-6) return 180;
+  const cos = Math.max(-1, Math.min(1, (ux * vx + uy * vy) / (du * dv)));
+  return (Math.acos(cos) * 180) / Math.PI;
+}
+
+/** Knees bent sharper than this → seated. */
+const SEATED_KNEE_DEG = 150;
+
+/** Seated when thighs folded, knees bent under 150°, or ankle/torso fallbacks. */
 export function isSeated(
   hips: Point,
   knees: Point | undefined,
@@ -85,6 +105,9 @@ export function isSeated(
   torsoLen: number,
   scale: number,
 ): boolean {
+  if (knees && visible(knees) && ankles && visible(ankles)) {
+    if (kneeBendDegrees(hips, knees, ankles) < SEATED_KNEE_DEG) return true;
+  }
   if (knees && visible(knees)) {
     const hipKnee = Math.max(0, knees.y - hips.y);
     return hipKnee < Math.max(torsoLen * 0.65, scale * 0.2);
@@ -335,6 +358,7 @@ export const POSTURE_CONSTANTS = {
   POTENTIAL_HEAD_TORSO,
   FULL_HEAD_TORSO,
   TORSO_COLLAPSE,
+  SEATED_KNEE_DEG,
   POTENTIAL_TO_SLUMP_MS,
   FALL_WINDOW_MS,
   FALL_COLLAPSE,
