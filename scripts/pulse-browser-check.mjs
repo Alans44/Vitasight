@@ -325,6 +325,27 @@ try {
     () => document.querySelectorAll(".pulse-card.locked").length === 0,
   );
   await page.getByRole("button", { name: /Stop Camera/ }).click();
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(
+        ".source-card, .patient-sidebar .patient-card, .face-mesh, .pulse-card",
+      ).length === 0,
+  );
+  await page.getByRole("button", { name: "Camera", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelector(".face-mesh") !== null,
+  );
+  await page.locator("video").evaluate((video) => {
+    const track = video.srcObject.getVideoTracks()[0];
+    track.stop();
+    track.dispatchEvent(new Event("ended"));
+  });
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(
+        ".source-card, .patient-sidebar .patient-card, .face-mesh, .pulse-card",
+      ).length === 0,
+  );
   await tabs.getByRole("button", { name: "Direct Feed", exact: true }).click();
   await page.getByRole("button", { name: "Start demo", exact: true }).click();
   await page.waitForFunction(

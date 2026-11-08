@@ -53,6 +53,8 @@ export default function SourceCard({
   const video = useRef<HTMLVideoElement>(null),
     sceneRef = useRef("resting");
   const poseMs = useRef(0);
+  const stopSource = useRef(onStop);
+  stopSource.current = onStop;
   const [scene, setScene] = useState("resting"),
     [error, setError] = useState(""),
     [ended, setEnded] = useState(false);
@@ -67,6 +69,18 @@ export default function SourceCard({
       );
     } catch {}
   }, [feed.id, overlays]);
+  useEffect(() => {
+    if (launch?.kind !== "camera" || !launch.stream) return;
+    const stream = launch.stream;
+    const ended = () => stopSource.current();
+    const tracks = stream.getVideoTracks();
+    tracks.forEach((track) => track.addEventListener("ended", ended));
+    stream.addEventListener("inactive", ended);
+    return () => {
+      tracks.forEach((track) => track.removeEventListener("ended", ended));
+      stream.removeEventListener("inactive", ended);
+    };
+  }, [launch]);
   useEffect(() => {
     if (!launch) return;
     let active = true,
@@ -90,6 +104,15 @@ export default function SourceCard({
       const start = performance.now();
       let delay = 120;
       try {
+        if (
+          launch.kind === "camera" &&
+          launch.stream
+            ?.getVideoTracks()
+            .every((track) => track.readyState === "ended")
+        ) {
+          stopSource.current();
+          return;
+        }
         if (
           launch.kind !== "demo" &&
           (!element || element.paused || element.readyState < 2)

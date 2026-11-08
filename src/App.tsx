@@ -26,6 +26,7 @@ import VideoLibrary from "./VideoLibrary";
 import NotificationSettings from "./NotificationSettings";
 import { smsStatusLabel } from "../shared/notifications";
 import { eventKindLabel } from "../shared/activity";
+import { playAlertSound } from "./alert-sound";
 
 export default function App() {
   const [state, setState] = useState<Snapshot | null>(null),
@@ -44,7 +45,9 @@ export default function App() {
       localStorage.getItem("reassessment-actor") ||
       "Local user",
   );
-  const [sound, setSound] = useState(false),
+  const [sound, setSound] = useState(
+      () => localStorage.getItem("vitasight-alert-sound") !== "off",
+    ),
     [vision, setVision] = useState(false),
     [personForm, setPersonForm] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -60,18 +63,38 @@ export default function App() {
   }, []);
   const file = useRef<HTMLInputElement>(null),
     soundContext = useRef<AudioContext | null>(null),
+    alertTone = useRef<OscillatorNode | null>(null),
+    soundingFeed = useRef<string | null>(null),
+    stoppedSources = useRef(new Set<string>()),
     seen = useRef<Set<string> | null>(null);
+  const prepareAudio = useCallback(() => {
+    try {
+      if (!soundContext.current || soundContext.current.state === "closed")
+        soundContext.current = new AudioContext();
+      void soundContext.current.resume().catch(() => {});
+    } catch {
+      setSound(false);
+    }
+  }, []);
   const refresh = useCallback(async () => {
     try {
       const next = await api<Snapshot>("/state");
+      for (const feed of next.feeds) {
+        if (stoppedSources.current.has(feed.id))
+          void api(`/sources/${feed.id}/stop`, {}).catch(() => {});
+      }
       setState((old) => ({
         ...next,
-        feeds: next.feeds.map((feed) => {
-          const current = old?.feeds.find(
-            (f) => f.id === feed.id && f.session === feed.session,
-          );
-          return current && current.lastFrame > feed.lastFrame ? current : feed;
-        }),
+        feeds: next.feeds
+          .filter((feed) => !stoppedSources.current.has(feed.id))
+          .map((feed) => {
+            const current = old?.feeds.find(
+              (f) => f.id === feed.id && f.session === feed.session,
+            );
+            return current && current.lastFrame > feed.lastFrame
+              ? current
+              : feed;
+          }),
       }));
       setOnline(true);
       setSettings((old) => old || next.settings);
@@ -80,6 +103,7 @@ export default function App() {
     }
   }, []);
   const updateFeed = useCallback((feed: Feed) => {
+    if (stoppedSources.current.has(feed.id)) return;
     setState((old) =>
       old
         ? {
@@ -119,23 +143,43 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!state) return;
-    const fresh = state.events.some(
-      (e) => e.status === "open" && seen.current && !seen.current.has(e.id),
+    const fresh = state.events.filter(
+      (event) =>
+        event.status === "open" &&
+        seen.current &&
+        !seen.current.has(event.id) &&
+        launches[event.feedId] &&
+        !stoppedSources.current.has(event.feedId) &&
+        state.feeds.some((feed) => feed.id === event.feedId),
     );
     seen.current = new Set(state.events.map((e) => e.id));
-    if (fresh && sound && soundContext.current) {
-      const ctx = soundContext.current,
-        osc = ctx.createOscillator(),
-        gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 620;
-      gain.gain.setValueAtTime(0.06, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
+    const alert = fresh.find((event) => event.kind === "fall") || fresh[0];
+    if (alert && sound && soundContext.current?.state === "running") {
+      if (alert.kind !== "fall" && alertTone.current) return;
+      alertTone.current?.stop();
+      const tone = playAlertSound(soundContext.current, alert.kind === "fall");
+      alertTone.current = tone;
+      soundingFeed.current = alert.feedId;
+      tone.addEventListener(
+        "ended",
+        () => {
+          if (alertTone.current === tone) {
+            alertTone.current = null;
+            soundingFeed.current = null;
+          }
+        },
+        { once: true },
+      );
     }
-  }, [state, sound]);
+  }, [state, sound, launches]);
+  useEffect(
+    () => () => {
+      alertTone.current?.stop();
+      if (soundContext.current && soundContext.current.state !== "closed")
+        void soundContext.current.close();
+    },
+    [],
+  );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -147,6 +191,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", key);
   }, []);
   async function addSource(kind: Launch["kind"], localFile?: File) {
+    if (sound) prepareAudio();
     setAdding(true);
     let stream: MediaStream | undefined;
     try {
@@ -191,31 +236,52 @@ export default function App() {
     }
   }
   async function stop(id: string) {
+    if (stoppedSources.current.has(id)) return;
+    stoppedSources.current.add(id);
+    launches[id]?.stream?.getTracks().forEach((track) => track.stop());
+    if (soundingFeed.current === id) alertTone.current?.stop();
+    setLaunches((old) => {
+      const copy = { ...old };
+      delete copy[id];
+      return copy;
+    });
+    setState((old) =>
+      old ? { ...old, feeds: old.feeds.filter((feed) => feed.id !== id) } : old,
+    );
     try {
       await api(`/sources/${id}/stop`, {});
-      setLaunches((old) => {
-        old[id]?.stream?.getTracks().forEach((t) => t.stop());
-        const copy = { ...old };
-        delete copy[id];
-        return copy;
-      });
       await refresh();
     } catch (e) {
       setError(String(e));
     }
   }
+  const allFeeds = state?.feeds || [];
+  const activeFeedIds = new Set(
+    allFeeds
+      .filter(
+        (feed) => launches[feed.id] && !stoppedSources.current.has(feed.id),
+      )
+      .map((feed) => feed.id),
+  );
   const events = (state?.events || []).filter(
       (e) => scope === "all" || e.mode === scope,
     ),
     queue = events
-      .filter((e) => ["open", "acknowledged"].includes(e.status))
+      .filter(
+        (e) =>
+          activeFeedIds.has(e.feedId) &&
+          ["open", "acknowledged"].includes(e.status),
+      )
       .sort(
         (a, b) =>
           Number(b.kind === "fall") - Number(a.kind === "fall") ||
           b.createdAt - a.createdAt,
       );
   const fallAlert = state?.events.find(
-    (event) => event.kind === "fall" && event.status === "open",
+    (event) =>
+      activeFeedIds.has(event.feedId) &&
+      event.kind === "fall" &&
+      event.status === "open",
   );
   const visibleAudit = (state?.audit || []).filter(
     (entry) =>
@@ -223,7 +289,6 @@ export default function App() {
       (!entry.action.startsWith("SMS") &&
         entry.action !== "Text alerts updated"),
   );
-  const allFeeds = state?.feeds || [];
   const feeds = allFeeds.filter((f) => scope === "all" || f.mode === scope);
   const faults = feeds.reduce(
     (n, f) =>
@@ -296,9 +361,12 @@ export default function App() {
             aria-pressed={sound}
             onClick={() => {
               if (!sound) {
-                soundContext.current ??= new AudioContext();
-                void soundContext.current.resume();
-              }
+                prepareAudio();
+              } else alertTone.current?.stop();
+              localStorage.setItem(
+                "vitasight-alert-sound",
+                sound ? "off" : "on",
+              );
               setSound(!sound);
             }}
           >
@@ -553,7 +621,7 @@ export default function App() {
               </section>
             </section>
             <PatientSidebar
-              feeds={feeds}
+              feeds={feeds.filter((feed) => activeFeedIds.has(feed.id))}
               patients={state?.patients || []}
               events={queue}
               onReview={setSelected}

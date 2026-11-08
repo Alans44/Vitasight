@@ -45,6 +45,41 @@ try {
     if (!r.url().startsWith(url) && !r.url().startsWith("data:"))
       external.push(r.url());
   });
+  await page.addInitScript(() => {
+    const NativeAudioContext = window.AudioContext;
+    window.__vitasightAudio = { starts: 0, peaks: [] };
+    window.AudioContext = class extends NativeAudioContext {
+      constructor() {
+        super();
+        this.meter = this.createAnalyser();
+        this.meter.connect(this.destination);
+        const samples = new Float32Array(this.meter.fftSize);
+        const timer = setInterval(() => {
+          if (this.state === "closed") return clearInterval(timer);
+          this.meter.getFloatTimeDomainData(samples);
+          window.__vitasightAudio.peaks.push(
+            Math.max(...samples.map(Math.abs)),
+          );
+        }, 20);
+      }
+      createGain() {
+        const gain = super.createGain();
+        const connect = gain.connect.bind(gain);
+        gain.connect = (target, ...args) =>
+          connect(target === this.destination ? this.meter : target, ...args);
+        return gain;
+      }
+      createOscillator() {
+        const oscillator = super.createOscillator();
+        const start = oscillator.start.bind(oscillator);
+        oscillator.start = (...args) => {
+          window.__vitasightAudio.starts++;
+          return start(...args);
+        };
+        return oscillator;
+      }
+    };
+  });
   await page.goto(url);
   await page.getByRole("button", { name: "Start demo", exact: true }).waitFor();
   await mkdir("test-results", { recursive: true });
@@ -125,12 +160,37 @@ try {
   );
   await page.getByRole("button", { name: "Start demo", exact: true }).click();
   await source.locator(".track-row").first().waitFor();
+  const soundsBeforeFall = await page.evaluate(() => {
+    window.__vitasightAudio.peaks = [];
+    return window.__vitasightAudio.starts;
+  });
   await source.getByLabel("Scenario").selectOption("fall");
   const fallBanner = page.getByRole("alert", {
     name: "Fall alert",
     exact: true,
   });
   await fallBanner.waitFor({ timeout: 5000 });
+  await page.waitForFunction(() =>
+    window.__vitasightAudio.peaks.some((peak) => peak > 0.01),
+  );
+  await page.waitForTimeout(1300);
+  const fallSound = await page.evaluate(() => {
+    let bursts = 0,
+      active = false;
+    for (const peak of window.__vitasightAudio.peaks) {
+      const audible = peak > 0.006;
+      if (audible && !active) bursts++;
+      active = audible;
+    }
+    return { starts: window.__vitasightAudio.starts, bursts };
+  });
+  assert.equal(
+    fallSound.starts,
+    soundsBeforeFall + 1,
+    "One alarm per fall episode",
+  );
+  assert.equal(fallSound.bursts, 3, "Fall alarm has three audible bursts");
+  await page.getByRole("button", { name: "Mute alerts", exact: true }).click();
   await page.locator(".patient-card.fall-event").waitFor();
   await source.locator(".feed-fall-alert").waitFor();
   await source
@@ -173,6 +233,65 @@ try {
   await drawer.locator(".status.acknowledged").waitFor();
   await page.getByRole("button", { name: "Close request" }).click();
   assert.equal(await fallBanner.count(), 0);
+  let releaseStop;
+  const stopped = new Promise((resolve) => {
+    releaseStop = resolve;
+  });
+  const stopRoute = async (route) => {
+    await stopped;
+    await route.continue();
+  };
+  await page.route("**/api/sources/*/stop", stopRoute);
+  try {
+    await source
+      .getByRole("button", { name: "Stop Scene lab 1", exact: true })
+      .click();
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll(
+          ".source-card, .patient-sidebar .patient-card",
+        ).length === 0,
+    );
+    assert.equal(
+      (await (await fetch(url + "/api/state")).json()).feeds.length,
+      1,
+      "Source stop is still awaiting server confirmation",
+    );
+    await page.waitForTimeout(600);
+    assert.equal(
+      await page.locator(".patient-sidebar .patient-card").count(),
+      0,
+      "Stale polls cannot restore stopped people",
+    );
+  } finally {
+    releaseStop();
+  }
+  await page.waitForFunction(
+    async () => (await (await fetch("/api/state")).json()).feeds.length === 0,
+  );
+  await page.unroute("**/api/sources/*/stop", stopRoute);
+  await page.getByRole("button", { name: "Start demo", exact: true }).click();
+  await source.locator(".track-row").first().waitFor();
+  await source.getByLabel("Scenario").selectOption("fall");
+  await fallBanner.waitFor();
+  await page.waitForTimeout(600);
+  assert.equal(
+    await page.evaluate(() => window.__vitasightAudio.starts),
+    fallSound.starts,
+    "Muted falls stay silent",
+  );
+  await source
+    .getByRole("button", { name: "Stop Scene lab 1", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      document.querySelectorAll(
+        ".source-card, .patient-sidebar .patient-card, .fall-alert-banner",
+      ).length === 0,
+  );
+  await page.waitForFunction(
+    async () => (await (await fetch("/api/state")).json()).feeds.length === 0,
+  );
   await page.reload();
   await page.getByRole("button", { name: /Event history/ }).click();
   await page
@@ -217,7 +336,7 @@ try {
     "App must not request remote services or fonts",
   );
   console.log(
-    "Browser passed: high-sensitivity settings and shelved text controls; slump review workflow; fall → red alert → overlay independence → acknowledgment → reload; desktop/mobile layouts; no page errors or external requests.",
+    "Browser passed: three-burst fall audio, mute, immediate people cleanup through delayed stop responses, saved event history, slump/fall review flow, desktop/mobile layouts, and shelved text controls.",
   );
 } finally {
   await browser?.close();
