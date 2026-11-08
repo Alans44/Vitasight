@@ -2,6 +2,7 @@ import { useId } from "react";
 import type { Track, Patient } from "../shared/contracts";
 import { trackStatusClass, trackStatusLabel } from "../shared/contracts";
 import type { FacePoint, FaceSignal, FaceTemplate } from "./usePulse";
+import { trackActivityLabel } from "../shared/activity";
 
 const BONES = [
   [5, 6],
@@ -176,8 +177,6 @@ export default function TrackingOverlay({
         );
         const name =
           patients.find((p) => p.id === track.patientId)?.name || track.label;
-        const status = trackStatusLabel(track);
-        const label = `${name} · ${status}`;
         return (
           <g key={track.key} className={trackStatusClass(track)}>
             <rect
@@ -193,12 +192,26 @@ export default function TrackingOverlay({
               d={`M${x} ${y + 17}V${y}H${x + 17} M${x + w - 17} ${y}H${x + w}V${y + 17} M${x + w} ${y + h - 17}V${y + h}H${x + w - 17} M${x + 17} ${y + h}H${x}V${y + h - 17}`}
             />
             <BodyWire track={track} />
+            {(track.fallDetected ||
+              track.slumpDetected ||
+              track.potentialSlump) && (
+              <text
+                className="track-activity"
+                x={x + 9}
+                y={Math.min(548, y + h - 10)}
+              >
+                {trackActivityLabel(track).toUpperCase()}
+              </text>
+            )}
             <g transform={`translate(${x},${Math.max(28, y - 10)})`}>
               <rect
                 className="track-name-bg"
                 x="0"
                 y="-19"
-                width={Math.min(360, 92 + label.length * 5.2)}
+                width={Math.min(
+                  360,
+                  92 + (name.length + trackStatusLabel(track).length) * 5.2,
+                )}
                 height="24"
                 rx="3"
               />
@@ -206,7 +219,7 @@ export default function TrackingOverlay({
                 <tspan className="track-id">
                   T{(index + 1).toString().padStart(2, "0")} /{" "}
                 </tspan>
-                {label}
+                {name} · {trackStatusLabel(track)}
               </text>
             </g>
           </g>

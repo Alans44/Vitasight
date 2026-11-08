@@ -20,7 +20,7 @@ The application verifies schemas, timestamps and session identity again after th
 
 `POST /release` with `{ "session": "session-uuid" }` retires a stopped stream. Idle sessions also expire after 60 seconds. A gap exceeding five seconds resets its tracker epoch. Sessions cannot exceed four simultaneously retained instances.
 
-The application computes a seated-posture score from head, shoulders, hips and knees. A review request requires usable landmarks, unambiguous tracking and the configured sustained threshold. Ambiguous overlap or a visibility gap clears patient association. Unknown data interrupts the sustain window. Normal observations reset the episode so a later change can produce a new request. Closing a request while the same condition persists does not create an immediate duplicate.
+The application computes seated-slump features and tracks rapid head-to-ankle collapse plus horizontal-body geometry. High sensitivity is the default; the initial slump hold is 0.75 seconds and its threshold is 0.10. Fall detection runs independently of that hold. A review event requires usable landmarks and unambiguous tracking. Ambiguous overlap or a visibility gap clears patient association and invalidates motion history. Unknown data interrupts the sustain window. A clear recovery resets the episode so a later change can produce a new request. Closing a request while the same condition persists does not create an immediate duplicate. See [activity detection](activity-detection.md) for thresholds and event behavior.
 
 Demo scenes use a separate `/api/sources/:id/demo` route and server-generated geometry. The server refuses demo data on live sources and real frames on demo sources. Demo records and events retain their mode in exports.
 

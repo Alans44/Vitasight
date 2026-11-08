@@ -88,7 +88,7 @@ export default function NotificationSettings({
               : "Connect Twilio"}
         </span>
       </div>
-      <p>One text per new posture event or reassessment reminder.</p>
+      <p>One text per new fall, slump, or reassessment reminder.</p>
       <div className="notification-columns">
         <form onSubmit={save}>
           <label className="notification-checkbox">

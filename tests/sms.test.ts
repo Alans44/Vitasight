@@ -11,6 +11,49 @@ import { createApp, demoDetections } from "../server/app.ts";
 import { SmsService } from "../server/sms.ts";
 import type { ReviewEvent } from "../shared/contracts.ts";
 
+test("shelved messaging blocks sending, re-enabling, and automatic event queuing", async () => {
+  const store = new Store(":memory:");
+  let requests = 0;
+  const sms = new SmsService(store, {
+    active: false,
+    fetcher: async () => {
+      requests++;
+      throw Error("Unexpected SMS request");
+    },
+  });
+  try {
+    store.configureSms(
+      {
+        enabled: true,
+        recipient: "+15005550009",
+        includeDemo: true,
+        trialTemplate: "",
+      },
+      "Fixture",
+    );
+    store.create(event(Date.now()));
+    assert.equal(store.smsNotifications().length, 0);
+    store.queueSms(null, "test", "+15005550009", "Archived pending test");
+    await sms.tick();
+    assert.equal(requests, 0);
+    assert.equal(sms.snapshot().available, false);
+    assert.throws(() => sms.test(), /shelved/);
+    assert.throws(
+      () =>
+        sms.configure({
+          enabled: true,
+          recipient: "+15005550009",
+          includeDemo: false,
+          trialTemplate: "",
+          actor: "Tester",
+        }),
+      /shelved/,
+    );
+  } finally {
+    store.close();
+  }
+});
+
 const credentials = {
   accountSid: "AC" + "1".repeat(32),
   authToken: "2".repeat(32),
@@ -69,6 +112,15 @@ const event = (now: number, mode: "live" | "demo" = "live"): ReviewEvent => ({
 
 test("a sustained waiting-room observation is logged once, texted once, then carrier-confirmed", async () => {
   const store = new Store(":memory:");
+  store.configure(
+    {
+      sustainSeconds: 3,
+      postureThreshold: 0.45,
+      overdueMinutes: 30,
+      detectionSensitivity: "balanced",
+    },
+    "Fixture",
+  );
   let now = 100_000;
   const requests: { url: string; init?: RequestInit }[] = [];
   const sms = new SmsService(store, {
@@ -100,8 +152,8 @@ test("a sustained waiting-room observation is logged once, texted once, then car
     assert.equal(store.events().length, 1);
     assert.equal(store.smsNotifications().length, 1);
     assert.match(
-      store.audit().find((a) => a.action === "Review requested")!.note,
-      /Waiting room 01.*(?:Head remained lowered|Potential slump held)/,
+      store.audit().find((a) => a.action === "Slump detected")!.note,
+      /Waiting room 01.*(head|upper torso).*remained lowered/i,
     );
     await Promise.all([sms.tick(), sms.tick()]);
     assert.equal(requests.length, 1);
@@ -109,7 +161,7 @@ test("a sustained waiting-room observation is logged once, texted once, then car
     assert.equal(sent.get("To"), preferences.recipient);
     assert.equal(sent.get("From"), credentials.fromNumber);
     assert.match(sent.get("Body")!, /Vitasight.*Waiting room 01/);
-    assert.match(sent.get("Body")!, /3s|3 seconds/);
+    assert.match(sent.get("Body")!, /3 seconds/);
     assert.equal(store.smsNotifications()[0].status, "queued");
     store.action(
       store.events()[0].id,
@@ -277,6 +329,7 @@ test("local API validates SMS setup, never exposes credentials, and exports real
   const credentialsPath = join(directory, "credentials.json");
   const { app, sms } = createApp(store, {
     sms: {
+      active: true,
       credentials: {},
       credentialsPath,
       fetcher: async () => Response.json({ sid: providerId, status: "queued" }),

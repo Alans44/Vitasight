@@ -6,7 +6,10 @@ if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 const dataPath = process.env.DATA_PATH || "data/reassessment.sqlite";
 const store = new Store(dataPath);
 const { app, sms } = createApp(store, {
-  sms: { credentialsPath: join(dirname(dataPath), "sms-credentials.json") },
+  sms: {
+    credentialsPath: join(dirname(dataPath), "sms-credentials.json"),
+    active: process.env.VITASIGHT_SMS_ENABLED === "true",
+  },
 });
 const dispatch = () =>
   void sms
@@ -16,14 +19,16 @@ const dispatch = () =>
         "Text notification dispatch is unavailable; check the local event log.",
       ),
     );
-const smsTimer = setInterval(dispatch, 1000);
-smsTimer.unref();
+const smsTimer = sms.snapshot().available
+  ? setInterval(dispatch, 1000)
+  : undefined;
+smsTimer?.unref();
 dispatch();
 const server = app.listen(Number(process.env.PORT || 8790), "127.0.0.1", () =>
   console.log(`Vitasight: http://127.0.0.1:${process.env.PORT || 8790}`),
 );
 function stop() {
-  clearInterval(smsTimer);
+  if (smsTimer) clearInterval(smsTimer);
   server.close(async () => {
     await sms.tick();
     store.close();

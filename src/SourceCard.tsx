@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, Film, FlaskConical, Square, EyeOff } from "lucide-react";
 import type { Feed, Patient } from "../shared/contracts";
-import { trackStatusLabel } from "../shared/contracts";
 import { api } from "./api";
 import { usePulse } from "./usePulse";
 import TrackingOverlay from "./TrackingOverlay";
 import PulsePanel from "./PulsePanel";
+import { trackActivityLabel } from "../shared/activity";
 
 export type Launch = {
   kind: "camera" | "video" | "demo";
@@ -35,7 +35,7 @@ export default function SourceCard({
   feed,
   launch,
   patients,
-  threshold: _threshold,
+  threshold,
   refresh,
   onFeed,
   report,
@@ -168,6 +168,9 @@ export default function SourceCard({
         </button>
       </header>
       <div className="viewport">
+        {visible.some((track) => track.fallDetected) && (
+          <div className="feed-fall-alert">Possible fall detected</div>
+        )}
         {feed.mode === "live" ? (
           <video
             ref={video}
@@ -272,7 +275,9 @@ export default function SourceCard({
             onChange={(e) => setScene(e.target.value)}
           >
             <option value="resting">Seated upright</option>
-            <option value="posture">Sustained posture change</option>
+            <option value="slump">Slump</option>
+            <option value="posture">Deep slump</option>
+            <option value="fall">Fall / collapse</option>
             <option value="occluded">Landmarks obscured</option>
             <option value="overlap">People overlap</option>
           </select>
@@ -298,11 +303,14 @@ export default function SourceCard({
                         ? "Identity uncertain"
                         : t.quality < 0.6
                           ? "Landmarks obscured"
-                          : t.fallDetected || t.slumpDetected || t.potentialSlump
-                            ? trackStatusLabel(t)
+                          : t.fallDetected ||
+                              t.slumpDetected ||
+                              t.potentialSlump ||
+                              (t.score !== null && t.score >= threshold)
+                            ? trackActivityLabel(t)
                             : t.patientId
-                              ? `${trackStatusLabel(t)} · Association confirmed`
-                              : `${trackStatusLabel(t)} · Confirm identity`}
+                              ? "Association confirmed"
+                              : "Confirm identity"}
                   </small>
                 </div>
                 <select

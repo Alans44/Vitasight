@@ -11,6 +11,15 @@ import { demoDetections } from "../server/app.ts";
 function fixture() {
   const store = new Store(":memory:"),
     monitor = new Monitor(store);
+  store.configure(
+    {
+      sustainSeconds: 3,
+      postureThreshold: 0.45,
+      overdueMinutes: 30,
+      detectionSensitivity: "balanced",
+    },
+    "Fixture",
+  );
   let now = 100_000;
   const feed = monitor.start("Room A", "demo", now);
   const patient = {
@@ -332,7 +341,7 @@ test("demo posture scene marks seated and latches SLUMP on the same track after 
     assert.equal(f.feed.tracks[0].seated, true);
     f.sustain();
     assert.equal(f.feed.tracks[0].slumpDetected, true);
-    assert.equal(f.store.events()[0].kind, "posture");
+    assert.equal(f.store.events()[0].kind, "slump");
     f.step("resting");
     assert.equal(f.feed.tracks[0].slumpDetected, true);
     assert.equal(f.feed.tracks[0].potentialSlump, false);

@@ -13,9 +13,10 @@ export type Patient = z.infer<typeof patientInput> & {
   assessedAt: number;
 };
 export const settingsSchema = z.object({
-  sustainSeconds: z.number().int().min(3).max(30),
-  postureThreshold: z.number().min(0.15).max(0.9),
+  sustainSeconds: z.number().min(0.25).max(30),
+  postureThreshold: z.number().min(0.02).max(0.9),
   overdueMinutes: z.number().int().min(0).max(180),
+  detectionSensitivity: z.enum(["high", "balanced"]).default("high"),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export const pointSchema = z.object({
@@ -64,6 +65,7 @@ export type Track = {
   potentialSlump: boolean;
   slumpDetected: boolean;
   fallDetected: boolean;
+  fallScore: number | null;
 };
 export function trackStatusLabel(
   track: Pick<
@@ -72,14 +74,11 @@ export function trackStatusLabel(
   >,
 ) {
   const seat = track.seated ? "SEATED" : "NOT SEATED";
-  const posture = track.fallDetected
-    ? "FALL"
-    : track.slumpDetected
-      ? "SLUMP"
-      : track.potentialSlump
-        ? "POTENTIAL SLUMP"
-        : "OK";
-  return `${seat} · ${posture}`;
+  let activity = "OK";
+  if (track.potentialSlump) activity = "POTENTIAL SLUMP";
+  if (track.slumpDetected) activity = "SLUMP";
+  if (track.fallDetected) activity = "FALL";
+  return `${seat} · ${activity}`;
 }
 export function trackStatusClass(
   track: Pick<
@@ -119,13 +118,22 @@ export type ReviewEvent = {
   person: string;
   patientId: string | null;
   mode: Mode;
-  kind: "posture" | "fall" | "overdue";
+  kind: "posture" | "slump" | "fall" | "overdue";
   status: "open" | "acknowledged" | "resolved" | "dismissed";
   assignedTo: string | null;
   reason: string;
   createdAt: number;
   updatedAt: number;
-  evidence: { score?: number; threshold?: number; seconds?: number };
+  evidence: {
+    score?: number;
+    threshold?: number;
+    seconds?: number;
+    collapse?: number;
+    headAnkle?: number;
+    torsoAngle?: number;
+    windowMs?: number;
+    sensitivity?: "high" | "balanced";
+  };
 };
 export type Audit = {
   id: string;
@@ -194,6 +202,7 @@ export type SmsNotification = {
   nextCheckAt: number | null;
 };
 export type SmsSnapshot = {
+  available: boolean;
   preferences: SmsPreferences;
   configured: boolean;
   credentialsSaved: boolean;

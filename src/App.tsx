@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Plus,
   Settings2,
+  TriangleAlert,
   Volume2,
   VolumeX,
   X,
@@ -24,6 +25,7 @@ import VideoPlaceholder from "./VideoPlaceholder";
 import VideoLibrary from "./VideoLibrary";
 import NotificationSettings from "./NotificationSettings";
 import { smsStatusLabel } from "../shared/notifications";
+import { eventKindLabel } from "../shared/activity";
 
 export default function App() {
   const [state, setState] = useState<Snapshot | null>(null),
@@ -205,7 +207,22 @@ export default function App() {
   const events = (state?.events || []).filter(
       (e) => scope === "all" || e.mode === scope,
     ),
-    queue = events.filter((e) => ["open", "acknowledged"].includes(e.status));
+    queue = events
+      .filter((e) => ["open", "acknowledged"].includes(e.status))
+      .sort(
+        (a, b) =>
+          Number(b.kind === "fall") - Number(a.kind === "fall") ||
+          b.createdAt - a.createdAt,
+      );
+  const fallAlert = state?.events.find(
+    (event) => event.kind === "fall" && event.status === "open",
+  );
+  const visibleAudit = (state?.audit || []).filter(
+    (entry) =>
+      state?.sms?.available ||
+      (!entry.action.startsWith("SMS") &&
+        entry.action !== "Text alerts updated"),
+  );
   const allFeeds = state?.feeds || [];
   const feeds = allFeeds.filter((f) => scope === "all" || f.mode === scope);
   const faults = feeds.reduce(
@@ -297,6 +314,24 @@ export default function App() {
       </header>
       <main>
         <div className="content">
+          {fallAlert && (
+            <div
+              className="fall-alert-banner"
+              role="alert"
+              aria-label="Fall alert"
+            >
+              <TriangleAlert size={23} />
+              <div>
+                <strong>Possible fall detected</strong>
+                <span>
+                  {fallAlert.source} · {fallAlert.person}
+                </span>
+              </div>
+              <button onClick={() => setSelected(fallAlert.id)}>
+                Review alert <ArrowUpRight size={15} />
+              </button>
+            </div>
+          )}
           {!online && (
             <div className="banner warning" role="status">
               The local server is unavailable. Displayed observations may be
@@ -345,7 +380,7 @@ export default function App() {
                       feed={feed}
                       launch={launches[feed.id]}
                       patients={state?.patients || []}
-                      threshold={state?.settings.postureThreshold ?? 0.45}
+                      threshold={state?.settings.postureThreshold ?? 0.1}
                       refresh={refresh}
                       onFeed={updateFeed}
                       report={setError}
@@ -450,13 +485,16 @@ export default function App() {
               <section className="dashboard-event-log" aria-label="Event log">
                 <div className="panel-title-row">
                   <h2>Event log</h2>
-                  <button
-                    className="text-button"
-                    onClick={() => setTab("settings")}
-                  >
-                    <MessageSquare size={13} />
-                    Text alerts {state?.sms?.preferences.enabled ? "on" : "off"}
-                  </button>
+                  {state?.sms?.available && (
+                    <button
+                      className="text-button"
+                      onClick={() => setTab("settings")}
+                    >
+                      <MessageSquare size={13} />
+                      Text alerts{" "}
+                      {state?.sms?.preferences.enabled ? "on" : "off"}
+                    </button>
+                  )}
                   <button
                     className="text-button"
                     onClick={() => setTab("events")}
@@ -465,11 +503,11 @@ export default function App() {
                     <ArrowUpRight size={13} />
                   </button>
                 </div>
-                {(state?.audit.length || 0) === 0 ? (
+                {visibleAudit.length === 0 ? (
                   <p className="log-empty">No events yet.</p>
                 ) : (
                   <div className="log-list">
-                    {state?.audit.slice(0, 6).map((entry) => (
+                    {visibleAudit.slice(0, 6).map((entry) => (
                       <div className="log-row" key={entry.id}>
                         <time>
                           {new Date(entry.at).toLocaleTimeString([], {
@@ -600,13 +638,7 @@ export default function App() {
                         <tr key={e.id}>
                           <td>
                             <strong>{e.person}</strong>
-                            <small>
-                              {e.kind === "posture"
-                                ? "Sustained posture change"
-                                : e.kind === "fall"
-                                  ? "Possible fall / faint"
-                                  : "Reassessment interval elapsed"}
-                            </small>
+                            <small>{eventKindLabel[e.kind]}</small>
                           </td>
                           <td>
                             {e.source}
@@ -619,19 +651,20 @@ export default function App() {
                             <span className={"status " + e.status}>
                               {e.status}
                             </span>
-                            {state?.sms?.notifications.find(
-                              (message) => message.eventId === e.id,
-                            ) && (
-                              <small>
-                                {
-                                  smsStatusLabel[
-                                    state.sms.notifications.find(
-                                      (message) => message.eventId === e.id,
-                                    )!.status
-                                  ]
-                                }
-                              </small>
-                            )}
+                            {state?.sms?.available &&
+                              state.sms.notifications.find(
+                                (message) => message.eventId === e.id,
+                              ) && (
+                                <small>
+                                  {
+                                    smsStatusLabel[
+                                      state.sms.notifications.find(
+                                        (message) => message.eventId === e.id,
+                                      )!.status
+                                    ]
+                                  }
+                                </small>
+                              )}
                           </td>
                           <td>
                             <button
@@ -698,11 +731,28 @@ export default function App() {
                 <h2>Observation rules</h2>
                 <p>Experimental rules. Human review required.</p>
                 <label className="field">
-                  Sustain window (seconds)
+                  Fall sensitivity
+                  <select
+                    value={settings.detectionSensitivity}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        detectionSensitivity: e.target
+                          .value as Settings["detectionSensitivity"],
+                      })
+                    }
+                  >
+                    <option value="high">High sensitivity</option>
+                    <option value="balanced">Balanced</option>
+                  </select>
+                </label>
+                <label className="field">
+                  Slump hold (seconds)
                   <input
                     required
                     type="number"
-                    min="3"
+                    min="0.25"
+                    step="0.25"
                     max="30"
                     value={settings.sustainSeconds}
                     onChange={(e) =>
@@ -714,13 +764,13 @@ export default function App() {
                   />
                 </label>
                 <label className="field">
-                  Seated posture threshold
+                  Slump threshold
                   <input
                     required
                     type="number"
-                    min="0.15"
+                    min="0.02"
                     max="0.9"
-                    step="0.05"
+                    step="0.01"
                     value={settings.postureThreshold}
                     onChange={(e) =>
                       setSettings({
@@ -750,7 +800,7 @@ export default function App() {
                   Save rules
                 </button>
               </form>
-              {state?.sms && (
+              {state?.sms?.available && (
                 <NotificationSettings
                   snapshot={state.sms}
                   actor={actor}
@@ -778,7 +828,7 @@ export default function App() {
           key={detail.id}
           event={detail}
           audit={state.audit}
-          notifications={state.sms?.notifications || []}
+          notifications={state.sms?.available ? state.sms.notifications : []}
           actor={actor.trim() || "Local user"}
           onClose={() => setSelected(null)}
           refresh={refresh}

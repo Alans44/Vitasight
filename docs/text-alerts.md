@@ -1,6 +1,8 @@
 # Waiting-room log and text alerts
 
-New sustained posture events and reassessment reminders are saved with their source, person, time, and a plain-language description. Open **Configuration → Text alerts** and enter:
+Text messaging is shelved. The default application hides its controls and blocks outgoing requests. The implementation below is retained for future use and requires the explicit server setting `VITASIGHT_SMS_ENABLED=true`.
+
+New fall alerts, slump events, and reassessment reminders are saved with their source, person, time, and a plain-language description. Open **Configuration → Text alerts** and enter:
 
 - The receiving mobile number, including country code.
 - A Twilio Account SID and auth token.

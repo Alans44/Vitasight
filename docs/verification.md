@@ -2,7 +2,13 @@
 
 The original baseline below was verified with Node 24.18.0, npm 11.16.0, Python 3.12, and Chromium through Playwright in WSL.
 
-## Waiting-room texts
+## Slump and fall addition
+
+Fifty automated tests pass, covering early slump indicators, the 0.75-second high-sensitivity hold, deep slump and fall separation, rapid-collapse alerts, an already-horizontal person, torso-collapse and bounding-box fallbacks, high and balanced thresholds, duplicate suppression, recovery, occlusion, source isolation, and shelved messaging. The browser walkthrough verifies red alerts, acknowledgment, persistence, hidden-overlay behavior, mobile layout, and hidden Twilio controls. Clinical accuracy remains unmeasured.
+
+## SMS integration
+
+Text messaging is shelved. Standard startup disables its dispatcher and hides its controls. The tests verify that shelved messaging blocks sending and automatic notification queuing. The earlier integration checks below describe work completed before shelving.
 
 Thirty automated tests pass, including event-to-SMS deduplication, provider acceptance versus delivery, disabled alerts, simulated-event opt-in, no history replay, persistent queues, interrupted sends, expired alerts, recipient changes, test cooldown, credential redaction, trial templates, and the local configuration/export API. SMS behavior is exercised with controlled Twilio API responses. A real Twilio trial test was also sent to the configured verified recipient, and Twilio reported carrier-confirmed delivery. The trial rejected custom text with error 572006; the supported trial template sends successfully while event details remain in the local log. The existing pose and pulse rules are unchanged.
 

@@ -13,9 +13,11 @@ import type {
 } from "../shared/contracts.ts";
 import { eventText, smsStatusLabel } from "../shared/notifications.ts";
 import type { z } from "zod";
+import { settingsSchema } from "../shared/contracts.ts";
 
 export class Store {
   db: DatabaseSync;
+  smsActive = false;
   constructor(file: string) {
     if (file !== ":memory:") mkdirSync(dirname(file), { recursive: true });
     this.db = new DatabaseSync(file);
@@ -30,9 +32,10 @@ export class Store {
       CREATE INDEX IF NOT EXISTS sms_status ON sms_outbox(status,created);`);
     this.db.prepare("INSERT OR IGNORE INTO settings VALUES(1,?)").run(
       JSON.stringify({
-        sustainSeconds: 3,
-        postureThreshold: 0.45,
+        sustainSeconds: 0.75,
+        postureThreshold: 0.1,
         overdueMinutes: 30,
+        detectionSensitivity: "high",
       }),
     );
     this.db
@@ -71,10 +74,12 @@ export class Store {
       .map((r) => JSON.parse(String(r.payload)));
   }
   settings(): Settings {
-    return JSON.parse(
-      String(
-        this.db.prepare("SELECT payload FROM settings WHERE id=1").get()!
-          .payload,
+    return settingsSchema.parse(
+      JSON.parse(
+        String(
+          this.db.prepare("SELECT payload FROM settings WHERE id=1").get()!
+            .payload,
+        ),
       ),
     );
   }
@@ -97,7 +102,8 @@ export class Store {
       )
       .run(patient.id, JSON.stringify(patient));
   }
-  configure(settings: Settings, actor: string) {
+  configure(input: z.input<typeof settingsSchema>, actor: string) {
+    const settings = settingsSchema.parse(input);
     this.transaction(() => {
       this.db
         .prepare("UPDATE settings SET payload=? WHERE id=1")
@@ -120,7 +126,11 @@ export class Store {
         );
       if (result.changes) {
         this.log(
-          "Review requested",
+          event.kind === "fall"
+            ? "Fall detected"
+            : event.kind === "slump"
+              ? "Slump detected"
+              : "Review requested",
           `${event.source} · ${event.person}: ${event.reason}`,
           "System",
           event.id,
@@ -128,6 +138,7 @@ export class Store {
         );
         const sms = this.smsPreferences();
         if (
+          this.smsActive &&
           sms.enabled &&
           sms.recipient &&
           (event.mode === "live" || sms.includeDemo)

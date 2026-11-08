@@ -55,41 +55,24 @@ try {
   await page
     .getByRole("button", { name: "Configuration", exact: true })
     .click();
-  const textAlerts = page.getByRole("region", {
-    name: "Text alerts",
-    exact: true,
-  });
-  await textAlerts
-    .getByLabel("Message format")
-    .selectOption("sms_internal_alerts");
-  await textAlerts.getByLabel("Recipient phone number").fill("+15005550009");
-  await textAlerts.getByRole("button", { name: "Save text settings" }).click();
-  await textAlerts
-    .getByRole("status")
-    .filter({ hasText: "Settings saved" })
-    .waitFor();
-  await textAlerts
-    .getByLabel("Send automatic text alerts", { exact: true })
-    .check();
-  await textAlerts.getByRole("button", { name: "Save text settings" }).click();
-  await textAlerts
-    .getByRole("alert")
-    .filter({ hasText: "Add the recipient" })
-    .waitFor();
-  await textAlerts
-    .getByLabel("Send automatic text alerts", { exact: true })
-    .uncheck();
-  await textAlerts.getByRole("button", { name: "Save text settings" }).click();
-  await textAlerts
-    .getByRole("status")
-    .filter({ hasText: "Settings saved" })
-    .waitFor();
+  await page.getByLabel("Fall sensitivity").waitFor();
+  assert.equal(
+    await page
+      .getByRole("region", { name: "Text alerts", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(await page.getByLabel("Fall sensitivity").inputValue(), "high");
+  assert.equal(
+    Number(await page.getByLabel("Slump hold (seconds)").inputValue()),
+    0.75,
+  );
   await page.screenshot({
-    path: "test-results/text-alerts-desktop.png",
+    path: "test-results/settings-desktop.png",
     fullPage: true,
   });
   const smsSetup = await (await fetch(url + "/api/state")).json();
-  assert.equal(smsSetup.sms.preferences.recipient, "+15005550009");
+  assert.equal(smsSetup.sms.available, false);
   assert.equal(smsSetup.sms.preferences.enabled, false);
   assert.equal(smsSetup.sms.notifications.length, 0);
   await page.getByRole("button", { name: "Dashboard", exact: true }).click();
@@ -133,6 +116,69 @@ try {
   assert.equal(exported.events[0].status, "resolved");
   assert.equal(exported.patients.find((p) => p.id === patient.id).priority, 3);
   assert.ok(exported.audit.some((a) => a.action === "reassess"));
+  await page.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await source
+    .getByRole("button", { name: "Stop Scene lab 1", exact: true })
+    .click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".source-card").length === 0,
+  );
+  await page.getByRole("button", { name: "Start demo", exact: true }).click();
+  await source.locator(".track-row").first().waitFor();
+  await source.getByLabel("Scenario").selectOption("fall");
+  const fallBanner = page.getByRole("alert", {
+    name: "Fall alert",
+    exact: true,
+  });
+  await fallBanner.waitFor({ timeout: 5000 });
+  await page.locator(".patient-card.fall-event").waitFor();
+  await source.locator(".feed-fall-alert").waitFor();
+  await source
+    .getByRole("button", { name: "Body landmarks", exact: true })
+    .click();
+  assert.equal(await fallBanner.isVisible(), true);
+  assert.equal(await source.locator(".feed-fall-alert").isVisible(), true);
+  await source
+    .getByRole("button", { name: "Body landmarks", exact: true })
+    .click();
+  await page.screenshot({
+    path: "test-results/fall-alert-desktop.png",
+    fullPage: true,
+  });
+  const fallState = await (await fetch(url + "/api/state")).json();
+  assert.equal(
+    fallState.events.filter((event) => event.kind === "fall").length,
+    1,
+  );
+  assert.equal(
+    fallState.events.find((event) => event.kind === "fall").mode,
+    "demo",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "test-results/fall-alert-mobile.png",
+    fullPage: true,
+  });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+    false,
+    "Fall alert mobile horizontal overflow",
+  );
+  await fallBanner.getByRole("button", { name: "Review alert" }).click();
+  await drawer
+    .getByRole("button", { name: "Acknowledge", exact: true })
+    .click();
+  await drawer.locator(".status.acknowledged").waitFor();
+  await page.getByRole("button", { name: "Close request" }).click();
+  assert.equal(await fallBanner.count(), 0);
+  await page.reload();
+  await page.getByRole("button", { name: /Event history/ }).click();
+  await page
+    .getByRole("searchbox", { name: "Search events" })
+    .fill("Possible fall");
+  await page.locator("tbody .status.acknowledged").waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Dashboard", exact: true }).click();
   await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
@@ -147,13 +193,15 @@ try {
   await page
     .getByRole("button", { name: "Configuration", exact: true })
     .click();
-  await page.getByLabel("Recipient phone number").waitFor();
+  await page.getByLabel("Fall sensitivity").waitFor();
   assert.equal(
-    await page.getByLabel("Recipient phone number").inputValue(),
-    "+15005550009",
+    await page
+      .getByRole("region", { name: "Text alerts", exact: true })
+      .count(),
+    0,
   );
   await page.screenshot({
-    path: "test-results/text-alerts-mobile.png",
+    path: "test-results/settings-mobile.png",
     fullPage: true,
   });
   assert.equal(
@@ -161,7 +209,7 @@ try {
       () => document.documentElement.scrollWidth > window.innerWidth,
     ),
     false,
-    "Text settings mobile horizontal overflow",
+    "Settings mobile horizontal overflow",
   );
   assert.deepEqual(
     external,
@@ -169,7 +217,7 @@ try {
     "App must not request remote services or fonts",
   );
   console.log(
-    "Browser passed: text-alert settings and validation; demo → association → sustained event → acknowledgment → assignment → reassessment → search/export/reload; mobile layouts; no page errors or external requests.",
+    "Browser passed: high-sensitivity settings and shelved text controls; slump review workflow; fall → red alert → overlay independence → acknowledgment → reload; desktop/mobile layouts; no page errors or external requests.",
   );
 } finally {
   await browser?.close();

@@ -16,6 +16,7 @@ const credentialsSchema = z.object({
 });
 type Credentials = z.infer<typeof credentialsSchema>;
 export type SmsOptions = {
+  active?: boolean;
   credentialsPath?: string;
   credentials?: Partial<Credentials>;
   fetcher?: typeof fetch;
@@ -46,6 +47,7 @@ export class SmsService {
     private store: Store,
     private options: SmsOptions = {},
   ) {
+    store.smsActive = options.active !== false;
     let saved = {};
     if (options.credentialsPath) {
       try {
@@ -75,6 +77,7 @@ export class SmsService {
   }
   snapshot(): SmsSnapshot {
     return {
+      available: this.options.active !== false,
       preferences: this.store.smsPreferences(),
       configured: credentialsSchema.safeParse(this.credentials).success,
       credentialsSaved:
@@ -84,6 +87,8 @@ export class SmsService {
     };
   }
   configure(input: z.infer<typeof smsConfigurationSchema>) {
+    if (this.options.active === false && input.enabled)
+      throw Error("Text messaging is shelved.");
     const next = { ...this.credentials };
     if (input.accountSid) {
       if (
@@ -125,6 +130,8 @@ export class SmsService {
     return this.snapshot();
   }
   test() {
+    if (this.options.active === false)
+      throw Error("Text messaging is shelved.");
     const snapshot = this.snapshot();
     if (!snapshot.configured || !snapshot.preferences.recipient)
       throw Error("Save a sender and recipient before sending a test text.");
@@ -145,6 +152,7 @@ export class SmsService {
     );
   }
   tick(): Promise<void> {
+    if (this.options.active === false) return Promise.resolve();
     if (this.running) return this.running;
     this.running = this.process().finally(() => {
       this.running = null;

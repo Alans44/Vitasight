@@ -15,4 +15,6 @@ npm start
 
 Open **http://127.0.0.1:8790**.
 
-Configure SMS in **Configuration > Text alerts**. See [text alert setup](docs/text-alerts.md).
+Alerts appear in the dashboard and event history.
+
+Slump and fall detection defaults to high sensitivity. Use the **Slump** or **Fall / collapse** demo scenarios, or a live camera. See [detection behavior](docs/activity-detection.md).

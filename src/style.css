@@ -706,6 +706,65 @@ main {
     border-color 0.15s,
     background 0.15s;
 }
+.patient-card.fall-event {
+  --patient: #ef4444;
+  --patient-text: #fecaca;
+  --patient-dark: #23080d;
+  --patient-tag: #341018;
+  background: #1a0b11;
+  border-color: #ef444485;
+  box-shadow: 0 0 24px #ef44440b;
+}
+.fall-alert-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 20px 0;
+  padding: 14px 16px;
+  border: 1px solid #ef444480;
+  border-radius: 12px;
+  background: linear-gradient(100deg, #341019, #190e14);
+  color: #fda4af;
+}
+.fall-alert-banner > div {
+  flex: 1;
+  min-width: 160px;
+}
+.fall-alert-banner strong,
+.fall-alert-banner span {
+  display: block;
+}
+.fall-alert-banner strong {
+  font-size: 14px;
+  color: #ffe4e6;
+}
+.fall-alert-banner span {
+  font-size: 11px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+.fall-alert-banner button {
+  border-color: #fb718560;
+  background: #4a1423;
+  color: #ffe4e6;
+  font-size: 12px;
+}
+.feed-fall-alert {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 6;
+  padding: 8px 12px;
+  border: 1px solid #fb7185;
+  border-radius: 6px;
+  color: #fff1f2;
+  background: #881337e8;
+  font:
+    600 11px ui-monospace,
+    monospace;
+  letter-spacing: 0.5px;
+}
 .event-card:hover {
   border-color: var(--patient);
   background: #15130b;
@@ -1555,6 +1614,25 @@ code {
 .pose-overlay {
   --track: #80efd3;
   --mesh: #66cbe1;
+}
+.pose-overlay .track-visual.fall {
+  --track: #fb7185;
+  --mesh: #fda4af;
+}
+.pose-overlay .track-visual.slump,
+.pose-overlay .track-visual.potential-slump {
+  --track: #fbbf24;
+  --mesh: #fde68a;
+}
+.pose-overlay .track-activity {
+  fill: var(--track);
+  font:
+    700 11px ui-monospace,
+    monospace;
+  letter-spacing: 1px;
+  paint-order: stroke;
+  stroke: #09090f;
+  stroke-width: 3px;
 }
 .pose-overlay .tracking-grid {
   color: #94c5d1;

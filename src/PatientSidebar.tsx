@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { Camera, ChevronDown, Plus } from "lucide-react";
 import type { Feed, Patient, ReviewEvent, Track } from "../shared/contracts";
+import { eventKindLabel, trackActivityLabel } from "../shared/activity";
 
 type Props = {
   feeds: Feed[];
@@ -73,7 +74,7 @@ function ObservedCard({
   const limited =
     now - track.lastSeen > 2000 || track.ambiguous || track.quality < 0.6;
   const name = patient?.name || track.label;
-  const status = limited ? "Visibility limited" : "Observed";
+  const status = limited ? "Visibility limited" : trackActivityLabel(track);
   const reason = limited
     ? track.ambiguous
       ? "Overlapping tracks. Waiting for a clear view."
@@ -203,12 +204,16 @@ export default function PatientSidebar({
               (item) => item.id === event.patientId,
             );
             const acknowledged = event.status === "acknowledged";
-            const status = acknowledged ? "Acknowledged" : "Needs review";
+            const status = acknowledged
+              ? "Acknowledged"
+              : event.kind === "fall"
+                ? "Possible fall"
+                : "Needs review";
             const name = event.person;
             return (
               <button
                 type="button"
-                className={`event-card patient-card ${acknowledged ? "acknowledged" : "needs-review"}`}
+                className={`event-card patient-card ${acknowledged ? "acknowledged" : "needs-review"} ${event.kind === "fall" ? "fall-event" : ""}`}
                 key={event.id}
                 onClick={() => onReview(event.id)}
                 aria-label={`Review ${name}, ${status.toLowerCase()}`}
@@ -228,11 +233,7 @@ export default function PatientSidebar({
                   <span className="patient-reason">{event.reason}</span>
                   <span className="patient-tags">
                     <span className="patient-tag">
-                      {event.kind === "posture"
-                        ? "Posture change"
-                        : event.kind === "fall"
-                          ? "Fall / faint"
-                          : "Reassessment due"}
+                      {eventKindLabel[event.kind]}
                     </span>
                     <span className="patient-tag">
                       {patient

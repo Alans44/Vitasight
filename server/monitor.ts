@@ -9,18 +9,15 @@ import type {
 import { Store } from "./store.ts";
 import {
   createPostureMemory,
-  POSTURE_CONSTANTS,
   updatePosture,
   type PostureMemory,
 } from "./posture-rules.ts";
-
 const overlap = (a: Detection["box"], b: Detection["box"]) => {
   const area =
     Math.max(0, Math.min(a[0] + a[2], b[0] + b[2]) - Math.max(a[0], b[0])) *
     Math.max(0, Math.min(a[1] + a[3], b[1] + b[3]) - Math.max(a[1], b[1]));
   return area / (a[2] * a[3] + b[2] * b[3] - area || 1);
 };
-
 export class Monitor {
   feeds = new Map<string, Feed>();
   private posture = new Map<string, PostureMemory>();
@@ -101,6 +98,7 @@ export class Monitor {
       throw Error("Stale or out-of-order frame");
     if (new Set(detections.map((d) => d.id)).size !== detections.length)
       throw Error("Duplicate tracking identities");
+    const settings = this.store.settings();
     for (const d of detections) {
       let t = feed.tracks.find(
         (t) => t.externalId === d.id && now - t.lastSeen < 5000,
@@ -123,6 +121,7 @@ export class Monitor {
           potentialSlump: false,
           slumpDetected: false,
           fallDetected: false,
+          fallScore: null,
         };
         feed.tracks.push(t);
         this.posture.set(t.key, createPostureMemory());
@@ -134,7 +133,17 @@ export class Monitor {
         ) || gap > 1500;
       const memory = this.posture.get(t.key) ?? createPostureMemory();
       this.posture.set(t.key, memory);
-      const measure = updatePosture(memory, d, ambiguous, now);
+      const quality = Math.min(
+        ...[5, 6, 11, 12].map((index) => d.points[index].confidence),
+      );
+      const measure = updatePosture(
+        memory,
+        d,
+        ambiguous,
+        now,
+        quality,
+        settings,
+      );
       if (ambiguous) t.patientId = null;
       Object.assign(t, {
         box: d.box,
@@ -147,61 +156,58 @@ export class Monitor {
         potentialSlump: measure.potentialSlump,
         slumpDetected: measure.slumpDetected,
         fallDetected: measure.fallDetected,
+        fallScore: measure.liveFall ? measure.collapse : null,
       });
-
-      // Clear the review episode when the person is upright this frame even if
-      // the short averaging window still looks slumped (enables a new request).
-      const uprightNow =
-        measure.headTorso === null ||
-        measure.headTorso < POSTURE_CONSTANTS.POTENTIAL_HEAD_TORSO ||
-        !measure.seated;
+      const uprightNow = measure.upright;
       if (!measure.liveSlump && uprightNow) {
         memory.slumpEpisode = false;
         t.since = null;
         t.episode = false;
-      } else if (measure.liveSlump) {
+      } else if (measure.liveSlump && !measure.liveFall) {
         t.since ??= now;
         t.episode = memory.slumpEpisode;
         if (!memory.slumpEpisode) {
           this.request(
             feed,
             t,
-            "posture",
-            "Potential slump held 3s while seated — reassessment requested.",
+            "slump",
+            `Slump detected: head or upper torso remained lowered while seated for ${settings.sustainSeconds} seconds. Check the person in view.`,
             now,
             {
               score: measure.score ?? undefined,
-              seconds: 3,
+              threshold: settings.postureThreshold,
+              seconds: settings.sustainSeconds,
             },
           );
           memory.slumpEpisode = true;
           t.episode = true;
         }
       }
-
-      if (!measure.liveFall) memory.fallEpisode = false;
-      else if (!memory.fallEpisode) {
+      if (measure.fallRecovered) memory.fallEpisode = false;
+      else if (measure.liveFall && !memory.fallEpisode) {
         this.request(
           feed,
           t,
           "fall",
-          "Rapid collapse toward the floor — possible fall/faint. Check the person in view.",
+          "Possible fall detected: rapid collapse or a near-horizontal body position. Check the person immediately.",
           now,
-          { score: 0.75, seconds: 1 },
+          {
+            score: measure.collapse,
+            collapse: measure.collapse,
+            torsoAngle: measure.torsoAngle,
+            headAnkle: measure.headAnkle ?? undefined,
+            windowMs: settings.detectionSensitivity === "high" ? 1100 : 700,
+            sensitivity: settings.detectionSensitivity,
+          },
         );
         memory.fallEpisode = true;
       }
     }
     const keep = new Set(
-      feed.tracks
-        .filter((t) => now - t.lastSeen < 10_000)
-        .map((t) => t.key),
+      feed.tracks.filter((t) => now - t.lastSeen < 10000).map((t) => t.key),
     );
     for (const key of this.posture.keys()) {
-      if (
-        feed.tracks.some((t) => t.key === key) &&
-        !keep.has(key)
-      )
+      if (feed.tracks.some((t) => t.key === key) && !keep.has(key))
         this.posture.delete(key);
     }
     feed.tracks = feed.tracks.filter((t) => keep.has(t.key));
@@ -252,7 +258,7 @@ export class Monitor {
           t.quality >= 0.6 &&
           now - t.lastSeen < 2000 &&
           settings.overdueMinutes > 0 &&
-          now - p.assessedAt > settings.overdueMinutes * 60_000
+          now - p.assessedAt > settings.overdueMinutes * 60000
         )
           this.request(
             feed,

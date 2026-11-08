@@ -26,7 +26,17 @@ export function demoDetections(scene: string): Detection[] {
       confidence: scene === "occluded" ? 0.2 : 0.95,
     }));
     for (const [i, dx, y] of [
-      [0, 0.12, scene === "posture" && n === 0 ? 0.51 : 0.18],
+      [
+        0,
+        0.12,
+        n === 0
+          ? scene === "posture"
+            ? 0.51
+            : scene === "slump"
+              ? 0.36
+              : 0.18
+          : 0.18,
+      ],
       [5, 0.07, 0.3],
       [6, 0.18, 0.3],
       [7, 0.04, 0.43],
@@ -45,6 +55,29 @@ export function demoDetections(scene: string): Detection[] {
         y,
         confidence: scene === "occluded" ? 0.2 : 0.95,
       };
+    if (scene === "fall" && n === 0) {
+      for (const [i, px, py] of [
+        [0, 0.12, 0.73],
+        [1, 0.115, 0.725],
+        [2, 0.125, 0.735],
+        [3, 0.14, 0.72],
+        [4, 0.14, 0.745],
+        [5, 0.2, 0.7],
+        [6, 0.2, 0.75],
+        [7, 0.26, 0.68],
+        [8, 0.27, 0.78],
+        [9, 0.32, 0.67],
+        [10, 0.33, 0.8],
+        [11, 0.36, 0.72],
+        [12, 0.36, 0.77],
+        [13, 0.44, 0.74],
+        [14, 0.44, 0.8],
+        [15, 0.55, 0.76],
+        [16, 0.55, 0.82],
+      ])
+        points[i] = { x: px, y: py, confidence: 0.95 };
+      return { id: String(n + 1), box: [0.08, 0.57, 0.5, 0.29], points };
+    }
     return { id: String(n + 1), box: [x + shift, 0.12, 0.27, 0.78], points };
   });
 }
@@ -53,7 +86,10 @@ export function createApp(store: Store, options: Options = {}) {
   const app = express(),
     monitor = new Monitor(store),
     busy = new Set<string>();
-  const sms = new SmsService(store, options.sms);
+  const sms = new SmsService(store, {
+    ...options.sms,
+    active: options.sms?.active ?? false,
+  });
   const poseUrl =
     options.poseUrl ||
     `http://127.0.0.1:${Number(process.env.POSE_PORT || 8791)}`;
@@ -146,7 +182,14 @@ export function createApp(store: Store, options: Options = {}) {
     const input = z
       .object({
         session: z.string().uuid(),
-        scene: z.enum(["resting", "posture", "occluded", "overlap"]),
+        scene: z.enum([
+          "resting",
+          "posture",
+          "slump",
+          "fall",
+          "occluded",
+          "overlap",
+        ]),
       })
       .parse(req.body);
     const feed = monitor.require(req.params.id, input.session);

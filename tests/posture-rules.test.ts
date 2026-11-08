@@ -7,7 +7,6 @@ import {
   POSTURE_CONSTANTS,
   updatePosture,
 } from "../server/posture-rules.ts";
-
 function blank(x = 0.2): Detection {
   const points = Array.from({ length: 17 }, () => ({
     x: x + 0.05,
@@ -16,10 +15,8 @@ function blank(x = 0.2): Detection {
   }));
   return { id: "1", box: [x, 0.05, 0.15, 0.9], points };
 }
-
 function seatedPose(x = 0.2): Detection {
   const d = blank(x);
-  // Torso ~0.33× box height so upright seated stays above TORSO_COLLAPSE.
   d.points[0] = { x: x + 0.05, y: 0.18, confidence: 0.95 };
   for (const i of [3, 4])
     d.points[i] = { x: x + 0.05, y: 0.2, confidence: 0.95 };
@@ -35,7 +32,6 @@ function seatedPose(x = 0.2): Detection {
     d.points[i] = { x: x + 0.05, y: 0.72, confidence: 0.95 };
   return d;
 }
-
 function potentialSlumpPose(x = 0.2): Detection {
   const d = seatedPose(x);
   d.points[0] = { x: x + 0.05, y: 0.28, confidence: 0.95 };
@@ -43,8 +39,6 @@ function potentialSlumpPose(x = 0.2): Detection {
     d.points[i] = { x: x + 0.05, y: 0.29, confidence: 0.95 };
   return d;
 }
-
-/** Shoulders near hips; head stays with shoulders so head-drop alone does not fire. */
 function collapsedTorsoPose(x = 0.2): Detection {
   const d = seatedPose(x);
   for (const i of [5, 6])
@@ -56,7 +50,6 @@ function collapsedTorsoPose(x = 0.2): Detection {
     d.points[i] = { x: x + 0.08, y: 0.55, confidence: 0.95 };
   return d;
 }
-
 function standingPose(x = 0.2): Detection {
   const d = blank(x);
   d.box = [x, 0.05, 0.15, 0.9];
@@ -75,7 +68,6 @@ function standingPose(x = 0.2): Detection {
     d.points[i] = { x: x + 0.05, y: 0.9, confidence: 0.95 };
   return d;
 }
-
 function fallenPose(x = 0.2): Detection {
   const d = standingPose(x);
   d.points[0] = { x: x + 0.05, y: 0.86, confidence: 0.95 };
@@ -87,7 +79,6 @@ function fallenPose(x = 0.2): Detection {
     d.points[i] = { x: x + 0.05, y: 0.84, confidence: 0.95 };
   return d;
 }
-
 test("isSeated: folded thighs vs standing legs", () => {
   const seated = seatedPose();
   const hips = {
@@ -107,7 +98,6 @@ test("isSeated: folded thighs vs standing legs", () => {
   };
   const torso = hips.y - shoulders.y;
   assert.equal(isSeated(hips, knees, undefined, torso, 0.9), true);
-
   const standing = standingPose();
   const sHips = {
     x: (standing.points[11].x + standing.points[12].x) / 2,
@@ -129,31 +119,28 @@ test("isSeated: folded thighs vs standing legs", () => {
     false,
   );
 });
-
 test("seated upright reports seated; standing does not", () => {
   const memory = createPostureMemory();
   let seatedFlag = false;
-  for (let at = 10_000; at < 12_000; at += 100) {
+  for (let at = 10000; at < 12000; at += 100) {
     const r = updatePosture(memory, seatedPose(), false, at);
     if (r.seated) seatedFlag = true;
   }
   assert.equal(seatedFlag, true);
-
   const standMem = createPostureMemory();
   let standingSeated = true;
-  for (let at = 10_000; at < 12_000; at += 100) {
+  for (let at = 10000; at < 12000; at += 100) {
     const r = updatePosture(standMem, standingPose(), false, at);
     standingSeated = r.seated;
   }
   assert.equal(standingSeated, false);
 });
-
 test("potential slump escalates to SLUMP after 3s hold", () => {
   const memory = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(memory, seatedPose(), false, at);
   let sawPotential = false;
-  for (let at = 12_000; at < 14_000; at += 100) {
+  for (let at = 12000; at < 14000; at += 100) {
     const r = updatePosture(memory, potentialSlumpPose(), false, at);
     if (r.potentialSlump) sawPotential = true;
     assert.equal(r.liveSlump, false);
@@ -161,17 +148,16 @@ test("potential slump escalates to SLUMP after 3s hold", () => {
   }
   assert.equal(sawPotential, true);
   let sawFull = false;
-  for (let at = 14_000; at <= 16_000; at += 100) {
+  for (let at = 14000; at <= 16000; at += 100) {
     const r = updatePosture(memory, potentialSlumpPose(), false, at);
     if (r.liveSlump) sawFull = true;
   }
   assert.equal(sawFull, true);
   assert.equal(memory.slumpLatched, true);
 });
-
 test("upright seated does not trigger torso-collapse potential", () => {
   const memory = createPostureMemory();
-  for (let at = 10_000; at < 14_000; at += 100) {
+  for (let at = 10000; at < 14000; at += 100) {
     const r = updatePosture(memory, seatedPose(), false, at);
     assert.equal(r.potentialSlump, false);
     assert.equal(r.liveSlump, false);
@@ -190,13 +176,12 @@ test("upright seated does not trigger torso-collapse potential", () => {
     ) / scale;
   assert.ok(gap > POSTURE_CONSTANTS.TORSO_COLLAPSE);
 });
-
 test("torso collapse while seated escalates to SLUMP after 3s", () => {
   const memory = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(memory, seatedPose(), false, at);
   let sawPotential = false;
-  for (let at = 12_000; at < 14_000; at += 100) {
+  for (let at = 12000; at < 14000; at += 100) {
     const r = updatePosture(memory, collapsedTorsoPose(), false, at);
     if (r.potentialSlump) sawPotential = true;
     assert.equal(r.liveSlump, false);
@@ -204,57 +189,53 @@ test("torso collapse while seated escalates to SLUMP after 3s", () => {
   }
   assert.equal(sawPotential, true);
   let sawFull = false;
-  for (let at = 14_000; at <= 16_000; at += 100) {
+  for (let at = 14000; at <= 16000; at += 100) {
     const r = updatePosture(memory, collapsedTorsoPose(), false, at);
     if (r.liveSlump) sawFull = true;
   }
   assert.equal(sawFull, true);
   assert.equal(memory.slumpLatched, true);
 });
-
 test("slump and fall stay sticky on overlay after recovery", () => {
   const memory = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(memory, seatedPose(), false, at);
-  for (let at = 12_000; at <= 16_000; at += 100)
+  for (let at = 12000; at <= 16000; at += 100)
     updatePosture(memory, potentialSlumpPose(), false, at);
   assert.equal(memory.slumpLatched, true);
-  const upright = updatePosture(memory, seatedPose(), false, 17_000);
+  const upright = updatePosture(memory, seatedPose(), false, 17000);
   assert.equal(upright.liveSlump, false);
   assert.equal(upright.slumpDetected, true);
   assert.equal(upright.potentialSlump, false);
-
   const fallMem = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(fallMem, standingPose(), false, at);
-  for (let at = 12_000; at <= 12_500; at += 50)
+  for (let at = 12000; at <= 12500; at += 50)
     updatePosture(fallMem, fallenPose(), false, at);
   assert.equal(fallMem.fallLatched, true);
   let liveCleared = false;
-  for (let at = 13_000; at <= 15_000; at += 100) {
+  for (let at = 13000; at <= 15000; at += 100) {
     const recovered = updatePosture(fallMem, standingPose(), false, at);
     assert.equal(recovered.fallDetected, true);
     if (!recovered.liveFall) liveCleared = true;
   }
   assert.equal(liveCleared, true);
 });
-
 test("rapid head-to-ankle collapse sets fall; slow drop does not", () => {
   const fast = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(fast, standingPose(), false, at);
   let sawFall = false;
-  for (let at = 12_000; at <= 12_500; at += 50) {
+  for (let at = 12000; at <= 12500; at += 50) {
     const r = updatePosture(fast, fallenPose(), false, at);
     if (r.liveFall) sawFall = true;
   }
   assert.equal(sawFall, true);
-
   const slow = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(slow, standingPose(), false, at);
   for (let step = 0; step <= 40; step++) {
-    const at = 12_000 + step * 200;
+    const at = 12000 + step * 200;
     const pose = standingPose();
     const y = 0.12 + (0.86 - 0.12) * (step / 40);
     pose.points[0].y = y;
@@ -263,13 +244,12 @@ test("rapid head-to-ankle collapse sets fall; slow drop does not", () => {
     if (step < 35) assert.equal(r.liveFall, false);
   }
 });
-
 test("bounding-box collapse sets fall when ankles are unreliable", () => {
   const memory = createPostureMemory();
-  for (let at = 10_000; at < 12_000; at += 100)
+  for (let at = 10000; at < 12000; at += 100)
     updatePosture(memory, standingPose(), false, at);
   let sawFall = false;
-  for (let at = 12_000; at <= 13_000; at += 50) {
+  for (let at = 12000; at <= 13000; at += 50) {
     const onFloor = standingPose();
     onFloor.box = [0.15, 0.55, 0.45, 0.35];
     for (const i of [15, 16]) onFloor.points[i].confidence = 0.1;
