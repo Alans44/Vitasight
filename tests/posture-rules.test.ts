@@ -194,6 +194,38 @@ test("seated upright reports seated; standing does not", () => {
   assert.equal(standingSeated, false);
 });
 
+test("seated is sticky: flicker and short stands stay seated; 2s+ standing releases", () => {
+  const memory = createPostureMemory();
+  let at = 10_000;
+  for (; at < 12_000; at += 100) {
+    assert.equal(updatePosture(memory, seatedPose(), false, at).seated, true);
+  }
+  // Alternating seated/standing reads every frame must not flip the label.
+  for (; at < 14_000; at += 100) {
+    const pose = (at / 100) % 2 === 0 ? seatedPose() : standingPose();
+    assert.equal(updatePosture(memory, pose, false, at).seated, true);
+  }
+  // Standing for 1.5s (< 2s) still reads seated.
+  const standStart = at;
+  for (; at < standStart + 1500; at += 100) {
+    assert.equal(updatePosture(memory, standingPose(), false, at).seated, true);
+  }
+  // A seated read resets the not-seated streak.
+  assert.equal(updatePosture(memory, seatedPose(), false, at).seated, true);
+  at += 100;
+  const streak = at;
+  let released = false;
+  for (; at <= streak + 2500; at += 100) {
+    const r = updatePosture(memory, standingPose(), false, at);
+    if (at - streak < POSTURE_CONSTANTS.SEATED_RELEASE_MS)
+      assert.equal(r.seated, true);
+    if (!r.seated) released = true;
+  }
+  assert.equal(released, true);
+  // Not seated now; sitting again is recognized immediately.
+  assert.equal(updatePosture(memory, seatedPose(), false, at).seated, true);
+});
+
 test("potential slump escalates to SLUMP after 3s hold", () => {
   const memory = createPostureMemory();
   for (let at = 10_000; at < 12_000; at += 100)

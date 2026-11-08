@@ -25,6 +25,10 @@ export type PostureMemory = {
   slumpEpisode: boolean;
   fallEpisode: boolean;
   lastSeen: number;
+  /** Debounced seated state (sticky until standing for SEATED_RELEASE_MS). */
+  seatedStable: boolean;
+  /** When the raw not-seated streak began (0 = not in a streak). */
+  notSeatedSince: number;
 };
 
 export type PostureFlags = {
@@ -96,6 +100,8 @@ export function kneeBendDegrees(
 
 /** Knees bent sharper than this → seated. */
 const SEATED_KNEE_DEG = 150;
+/** Once seated, stay seated until continuously not seated for this long. */
+const SEATED_RELEASE_MS = 2000;
 
 /** Seated when thighs folded, knees bent under 150°, or ankle/torso fallbacks. */
 export function isSeated(
@@ -130,6 +136,8 @@ export function createPostureMemory(): PostureMemory {
     slumpEpisode: false,
     fallEpisode: false,
     lastSeen: 0,
+    seatedStable: false,
+    notSeatedSince: 0,
   };
 }
 
@@ -200,10 +208,29 @@ export function updatePosture(
   const boxCy = detection.box[1] + detection.box[3] / 2;
   const sampleOk = postureOk && postureQuality >= 0.6 && !ambiguous;
   const last = memory.history[memory.history.length - 1];
+
+  // Hysteresis: seated is sticky. Enter immediately on a seated read; leave
+  // only after 2s+ of continuous not-seated. Unusable frames hold the state.
+  if (sampleOk) {
+    if (seated) {
+      memory.seatedStable = true;
+      memory.notSeatedSince = 0;
+    } else if (memory.seatedStable) {
+      memory.notSeatedSince = memory.notSeatedSince || now;
+      if (now - memory.notSeatedSince >= SEATED_RELEASE_MS) {
+        memory.seatedStable = false;
+        memory.notSeatedSince = 0;
+      }
+    } else {
+      memory.notSeatedSince = 0;
+    }
+  }
+  const seatedStable = memory.seatedStable;
+
   if (sampleOk || (!ambiguous && boxH > 0.05)) {
     memory.history.push({
       at: now,
-      seated: sampleOk ? seated : (last?.seated ?? seated),
+      seated: seatedStable,
       headTorso: sampleOk ? headTorso : (last?.headTorso ?? headTorso),
       shoulderHipGap: sampleOk
         ? shoulderHipGap
@@ -242,7 +269,7 @@ export function updatePosture(
     currentWindow.length > 0
       ? currentWindow.filter((h) => h.seated).length >=
         currentWindow.length * 0.6
-      : seated;
+      : seatedStable;
 
   const torsoCollapsed =
     curHipGap <= TORSO_COLLAPSE || curKneeGap <= TORSO_COLLAPSE;
@@ -256,7 +283,7 @@ export function updatePosture(
     shoulderHipGap <= TORSO_COLLAPSE || shoulderKneeGap <= TORSO_COLLAPSE;
   const frameUpright =
     !postureUsable ||
-    !seated ||
+    !seatedStable ||
     (headTorso < POTENTIAL_HEAD_TORSO && !frameCollapsed);
   if (potentialSlump && !frameUpright) {
     memory.potentialSince = memory.potentialSince || now;
@@ -345,7 +372,7 @@ export function updatePosture(
     quality,
     score,
     headTorso: postureOk ? headTorso : null,
-    seated: sampleOk ? seated : (last?.seated ?? seated),
+    seated: seatedStable,
     potentialSlump: potentialSlump && !liveSlump && !memory.slumpLatched,
     liveSlump,
     slumpDetected: memory.slumpLatched,
@@ -359,6 +386,7 @@ export const POSTURE_CONSTANTS = {
   FULL_HEAD_TORSO,
   TORSO_COLLAPSE,
   SEATED_KNEE_DEG,
+  SEATED_RELEASE_MS,
   POTENTIAL_TO_SLUMP_MS,
   FALL_WINDOW_MS,
   FALL_COLLAPSE,
